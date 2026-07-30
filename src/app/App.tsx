@@ -3,7 +3,7 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { App as AntApp, ConfigProvider, Form, theme } from "antd";
 import enUS from "antd/locale/en_US";
 import zhCN from "antd/locale/zh_CN";
-import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   loadLibraryFolders,
@@ -33,9 +33,8 @@ import {
   uninstallSourcePlugin,
 } from "../backend/audioApi";
 import { Shell } from "../components/Shell";
-import { AppContextMenu } from "../components/AppContextMenu";
 import { SongDetails } from "../components/SongDetails";
-import { defaultArtistSplitConfig, filterTracks, groupAlbums, groupArtists } from "../domain/library";
+import { defaultArtistSplitConfig } from "../domain/library";
 import { completeTagForm, splitGenreValues } from "../domain/tagForm";
 import { detectLyricsFormat } from "../backend/lyricsApi";
 import { updateCachedCover } from "../hooks/useTrackCovers";
@@ -45,13 +44,10 @@ import {
   setLanguagePreference as persistLanguagePreference,
   type LanguagePreference,
 } from "../i18n";
-import { AlbumsPage } from "../pages/AlbumsPage";
-import { ArtistsPage } from "../pages/ArtistsPage";
 import { FoldersPage } from "../pages/FoldersPage";
-import { PluginsPage } from "../pages/PluginsPage";
+import { LibraryPage } from "../pages/LibraryPage";
 import { SettingsPage } from "../pages/SettingsPage";
-import { SongsPage } from "../pages/SongsPage";
-import { TasksPage } from "../pages/TasksPage";
+import { ToolsPage } from "../pages/ToolsPage";
 import type { ArtistSplitConfig, AudioTrack, BatchTask, BatchTaskItem, DesktopSettings, LibraryFolder, ScanProgress, SourcePlugin, TagForm, ViewKey } from "./types";
 import { getReplayGainProgress, publishReplayGainProgress } from "../hooks/useReplayGainProgress";
 import "../App.css";
@@ -100,23 +96,18 @@ export default function App() {
 function LyricoDesktop() {
   const { message } = AntApp.useApp();
   const { t, i18n } = useTranslation();
-  const [activeView, setActiveView] = useState<ViewKey>("songs");
+  const [activeView, setActiveView] = useState<ViewKey>("library");
   const [tracks, setTracks] = useState<AudioTrack[]>([]);
   const [folders, setFolders] = useState<LibraryFolder[]>([]);
   const [selectedPath, setSelectedPath] = useState<string>();
   const [selectedPaths, setSelectedPaths] = useState<string[]>([]);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedFolderPath, setSelectedFolderPath] = useState<string>();
-  const [selectedAlbumId, setSelectedAlbumId] = useState<string>();
-  const [selectedArtistId, setSelectedArtistId] = useState<string>();
-  const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [detailsLoading, setDetailsLoading] = useState(false);
   const [detailTrack, setDetailTrack] = useState<AudioTrack>();
   const [detailsOpen, setDetailsOpen] = useState(false);
-  const [albumDetailsOpen, setAlbumDetailsOpen] = useState(false);
-  const [artistDetailsOpen, setArtistDetailsOpen] = useState(false);
   const [plugins, setPlugins] = useState<SourcePlugin[]>([]);
   const [artistSplitConfig, setArtistSplitConfig] = useState<ArtistSplitConfig>(defaultArtistSplitConfig);
   const [desktopSettings, setDesktopSettings] = useState<DesktopSettings>(defaultDesktopSettings);
@@ -126,17 +117,6 @@ function LyricoDesktop() {
   const detailRequest = useRef(0);
   const artistSplitSaveQueue = useRef<Promise<void>>(Promise.resolve());
   const settingsSaveQueue = useRef<Promise<void>>(Promise.resolve());
-  const deferredQuery = useDeferredValue(query);
-  const isSearchView = activeView === "songs" || activeView === "albums" || activeView === "artists";
-  const filteredTracks = useMemo(
-    () => (isSearchView ? filterTracks(tracks, deferredQuery) : tracks),
-    [tracks, deferredQuery, isSearchView],
-  );
-  const albums = useMemo(() => (activeView === "albums" ? groupAlbums(filteredTracks) : []), [activeView, filteredTracks]);
-  const artists = useMemo(
-    () => (activeView === "artists" ? groupArtists(filteredTracks, artistSplitConfig) : []),
-    [activeView, filteredTracks, artistSplitConfig],
-  );
   const selectedTrackSummary = tracks.find((track) => track.path === selectedPath);
   const selectedTrack = detailTrack?.path === selectedPath ? detailTrack : selectedTrackSummary;
   const selectedTracks = useMemo(() => {
@@ -566,10 +546,8 @@ function LyricoDesktop() {
       return;
     }
     setDetailsOpen(false);
-    setAlbumDetailsOpen(false);
-    setArtistDetailsOpen(false);
     setSelectionMode(false);
-    setActiveView("tasks");
+    setActiveView("tools");
   }
 
   function changeSelectionMode(enabled: boolean) {
@@ -579,60 +557,15 @@ function LyricoDesktop() {
 
   function renderActivePage() {
     switch (activeView) {
-      case "albums":
+      case "library":
         return (
-          <AlbumsPage
-            albums={albums}
-            query={query}
-            selectedAlbumId={selectedAlbumId}
+          <LibraryPage
+            tracks={tracks}
             selectedPath={selectedPath}
-            detailsOpen={albumDetailsOpen}
-            loading={loading}
-            onChangeQuery={setQuery}
-            onSelectAlbum={(albumId) => {
-              setSelectedAlbumId(albumId);
-              setAlbumDetailsOpen(true);
-            }}
-            onSelectTrack={selectTrack}
-            onOpenTrack={(path) => {
-              setAlbumDetailsOpen(false);
-              void openTrackDetails(path);
-            }}
-            onOpenDetails={() => setAlbumDetailsOpen(true)}
-            onCloseDetails={() => setAlbumDetailsOpen(false)}
             selectedPaths={selectedPaths}
-            selectionMode={selectionMode}
-            onChangeSelectedPaths={setSelectedPaths}
-            onChangeSelectionMode={changeSelectionMode}
-            onOpenBatch={openBatchForSelection}
-          />
-        );
-      case "artists":
-        return (
-          <ArtistsPage
-            artists={artists}
-            query={query}
-            selectedArtistId={selectedArtistId}
-            selectedPath={selectedPath}
-            detailsOpen={artistDetailsOpen}
-            loading={loading}
-            onChangeQuery={setQuery}
-            onSelectArtist={(artistId) => {
-              setSelectedArtistId(artistId);
-              setArtistDetailsOpen(true);
-            }}
             onSelectTrack={selectTrack}
-            onOpenTrack={(path) => {
-              setArtistDetailsOpen(false);
-              void openTrackDetails(path);
-            }}
-            onOpenDetails={() => setArtistDetailsOpen(true)}
-            onCloseDetails={() => setArtistDetailsOpen(false)}
-            selectedPaths={selectedPaths}
-            selectionMode={selectionMode}
             onChangeSelectedPaths={setSelectedPaths}
-            onChangeSelectionMode={changeSelectionMode}
-            onOpenBatch={openBatchForSelection}
+            onOpenDetails={openTrackDetails}
           />
         );
       case "folders":
@@ -656,25 +589,19 @@ function LyricoDesktop() {
             onOpenBatch={openBatchForSelection}
           />
         );
-      case "sources":
+      case "tools":
         return (
-          <PluginsPage
-            plugins={plugins}
-            onInstall={installPlugin}
-            onChangeEnabled={changePluginEnabled}
-            onSaveConfig={savePluginConfig}
-            onUninstall={uninstallPlugin}
-          />
-        );
-      case "tasks":
-        return (
-          <TasksPage
+          <ToolsPage
             tracks={tracks}
             plugins={plugins}
             selectedPaths={selectedPaths}
             settings={desktopSettings}
             artistSeparator={artistSplitConfig.artistSeparator}
             onChangeSettings={changeDesktopSettings}
+            onInstallPlugin={installPlugin}
+            onChangePluginEnabled={changePluginEnabled}
+            onSavePluginConfig={savePluginConfig}
+            onUninstallPlugin={uninstallPlugin}
           />
         );
       case "settings":
@@ -688,26 +615,8 @@ function LyricoDesktop() {
             onChangeSettings={changeDesktopSettings}
           />
         );
-      case "songs":
       default:
-        return (
-          <SongsPage
-            tracks={filteredTracks}
-            query={query}
-            selectedTrack={selectedTrack}
-            selectedPath={selectedPath}
-            selectedPaths={selectedPaths}
-            loading={loading}
-            onChangeQuery={setQuery}
-            onSelectTrack={selectTrack}
-            onChangeSelectedPaths={setSelectedPaths}
-            selectionMode={selectionMode}
-            onChangeSelectionMode={changeSelectionMode}
-            onOpenBatch={openBatchForSelection}
-            onReloadTrack={refreshSelected}
-            onOpenDetails={openTrackDetails}
-          />
-        );
+        return null;
     }
   }
 
@@ -748,7 +657,6 @@ function LyricoDesktop() {
         onClose={() => setDetailsOpen(false)}
       />
     </Shell>
-    <AppContextMenu onNavigate={setActiveView} />
     </>
   );
 }

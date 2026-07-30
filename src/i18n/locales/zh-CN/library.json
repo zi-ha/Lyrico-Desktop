@@ -33,6 +33,7 @@
   },
   "table": {
     "song": "歌曲",
+    "fileName": "文件名",
     "album": "专辑",
     "track": "曲序",
     "duration": "时长",

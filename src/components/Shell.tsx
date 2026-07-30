@@ -1,6 +1,4 @@
 import {
-  AppstoreOutlined,
-  CloudSyncOutlined,
   CustomerServiceOutlined,
   FolderOutlined,
   DeleteOutlined,
@@ -9,7 +7,6 @@ import {
   MenuUnfoldOutlined,
   SettingOutlined,
   TagsOutlined,
-  TeamOutlined,
 } from "@ant-design/icons";
 import { Badge, Button, Drawer, Flex, Layout, Menu, Progress, Table, Tooltip, Typography, type MenuProps, type TableColumnsType } from "antd";
 import { useState, type ReactNode } from "react";
@@ -54,9 +51,7 @@ export function Shell({
       type: "group",
       label: t("nav.library"),
       children: [
-        { key: "songs", icon: <CustomerServiceOutlined />, label: t("common.songs") },
-        { key: "albums", icon: <AppstoreOutlined />, label: t("common.albums") },
-        { key: "artists", icon: <TeamOutlined />, label: t("common.artists") },
+        { key: "library", icon: <CustomerServiceOutlined />, label: t("common.songs") },
         { key: "folders", icon: <FolderOutlined />, label: t("common.folders") },
       ],
     },
@@ -64,8 +59,7 @@ export function Shell({
       type: "group",
       label: t("nav.tools"),
       children: [
-        { key: "sources", icon: <TagsOutlined />, label: t("common.sources") },
-        { key: "tasks", icon: <CloudSyncOutlined />, label: t("common.tasks") },
+        { key: "tools", icon: <TagsOutlined />, label: t("common.tools") },
       ],
     },
   ];

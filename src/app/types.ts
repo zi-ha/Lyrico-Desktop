@@ -1,10 +1,7 @@
 export type ViewKey =
-  | "songs"
-  | "albums"
-  | "artists"
+  | "library"
   | "folders"
-  | "sources"
-  | "tasks"
+  | "tools"
   | "settings";
 
 export type AudioTrack = {

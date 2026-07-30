@@ -9,7 +9,7 @@ import type { AlbumGroup } from "../domain/library";
 import { formatDuration } from "../utils/format";
 import { useResizableColumns, type BoundedColumn } from "../hooks/useResizableColumns";
 
-const { Title, Text } = Typography;
+const { Text } = Typography;
 
 export function AlbumsPage({
   albums,
@@ -92,14 +92,10 @@ export function AlbumsPage({
   const { columns, components } = useResizableColumns(baseColumns);
 
   return (
-    <div className="workspace page-stack">
-      <Flex className="library-page-header" justify="space-between" align="start" gap={16}>
-        <div className="library-page-header-copy">
-          <Title level={2}>{t("albums.title")}</Title>
-          <Text type="secondary">{t("albums.description")}</Text>
-        </div>
-        <Space className="library-page-actions">
-          <Input allowClear className="page-search" prefix={<SearchOutlined />} placeholder={t("search.placeholder", { scope: t("search.albums") })} value={query} onChange={(event) => onChangeQuery(event.target.value)} />
+    <div className="library-page-content">
+      <Flex className="library-page-header" justify="space-between" align="center" gap={16}>
+        <Input allowClear className="page-search" prefix={<SearchOutlined />} placeholder={t("search.placeholder", { scope: t("search.albums") })} value={query} onChange={(event) => onChangeQuery(event.target.value)} />
+        <Space>
           {selectionMode ? <Button icon={<CloseOutlined />} onClick={() => onChangeSelectionMode(false)}>{t("selection.exit")}</Button> : <Button icon={<CheckSquareOutlined />} onClick={() => onChangeSelectionMode(true)}>{t("selection.selectAlbums")}</Button>}
         </Space>
       </Flex>

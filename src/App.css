@@ -990,3 +990,153 @@ textarea {
     width: 100%;
   }
 }
+
+.library-tabs .ant-tabs-nav {
+  margin-bottom: 0;
+}
+
+.library-tabs .ant-tabs-tab {
+  padding: 12px 16px;
+}
+
+.library-tabs .ant-tabs-content {
+  padding-top: 16px;
+}
+
+.library-page-content {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.tools-tabs .ant-tabs-nav {
+  margin-bottom: 0;
+}
+
+.tools-tabs .ant-tabs-tab {
+  padding: 12px 16px;
+}
+
+.songs-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.songs-header-row {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  height: 36px;
+  padding: 0 16px;
+  background: #fafafa;
+  border-bottom: 1px solid rgba(5, 5, 5, 0.08);
+  font-size: 12px;
+  font-weight: 600;
+  color: #8c8c8c;
+}
+
+.songs-list-container {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  background: #fff;
+  user-select: none;
+}
+
+.songs-list-scroll {
+  width: 100%;
+}
+
+.songs-list-row {
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  cursor: pointer;
+  border-bottom: 1px solid rgba(5, 5, 5, 0.04);
+  transition: background 0.1s;
+}
+
+.songs-list-row:hover {
+  background: #f5f5f5;
+}
+
+.songs-list-row.row-active {
+  background: #e6f4ff;
+}
+
+.songs-list-row.row-selected {
+  background: #bae0ff;
+}
+
+.songs-list-row.row-selected.row-active {
+  background: #91caff;
+}
+
+.songs-list-row.row-drag-highlight {
+  background: #d9e8ff;
+}
+
+.songs-col-artwork {
+  flex: 0 0 44px;
+  padding-right: 8px;
+}
+
+.songs-col-filename {
+  flex: 0 0 180px;
+  min-width: 0;
+  overflow: hidden;
+  padding-right: 8px;
+}
+
+.songs-col-format {
+  flex: 0 0 60px;
+  padding-right: 8px;
+}
+
+.songs-col-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  padding-right: 8px;
+}
+
+.songs-col-artist {
+  flex: 0 0 140px;
+  min-width: 0;
+  overflow: hidden;
+  padding-right: 8px;
+}
+
+.songs-col-album {
+  flex: 0 0 160px;
+  min-width: 0;
+  overflow: hidden;
+  padding-right: 8px;
+}
+
+.songs-col-albumartist {
+  flex: 0 0 140px;
+  min-width: 0;
+  overflow: hidden;
+  padding-right: 8px;
+}
+
+.songs-col-duration {
+  flex: 0 0 60px;
+  text-align: right;
+}
+
+@media (max-width: 900px) {
+  .songs-col-albumartist {
+    display: none;
+  }
+}
+
+@media (max-width: 768px) {
+  .songs-col-album {
+    display: none;
+  }
+}

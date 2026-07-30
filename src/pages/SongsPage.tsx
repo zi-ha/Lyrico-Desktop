@@ -1,102 +1,218 @@
-import { CheckSquareOutlined, CloseOutlined, ReloadOutlined, SearchOutlined } from "@ant-design/icons";
-import { Button, Card, Empty, Flex, Input, Space, Tooltip, Typography } from "antd";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Typography } from "antd";
 import { useTranslation } from "react-i18next";
 import type { AudioTrack } from "../app/types";
-import { LibraryTable } from "../components/LibraryTable";
-import { LibrarySelectionToolbar } from "../components/LibrarySelectionToolbar";
+import { TrackArtwork } from "../components/TrackArtwork";
+import { formatDuration } from "../utils/format";
 
-const { Title, Text } = Typography;
+const { Text } = Typography;
 
 export function SongsPage({
   tracks,
-  query,
-  selectedTrack,
   selectedPath,
   selectedPaths,
-  loading,
-  onChangeQuery,
   onSelectTrack,
   onChangeSelectedPaths,
-  onReloadTrack,
   onOpenDetails,
-  selectionMode,
-  onChangeSelectionMode,
-  onOpenBatch,
 }: {
   tracks: AudioTrack[];
-  query: string;
-  selectedTrack?: AudioTrack;
   selectedPath?: string;
   selectedPaths: string[];
-  loading: boolean;
-  onChangeQuery: (query: string) => void;
   onSelectTrack: (path?: string) => void;
   onChangeSelectedPaths: (paths: string[]) => void;
-  onReloadTrack: () => void;
   onOpenDetails: (path?: string) => void;
-  selectionMode: boolean;
-  onChangeSelectionMode: (enabled: boolean) => void;
-  onOpenBatch: () => void;
 }) {
   const { t } = useTranslation();
-  return (
-    <div className="workspace page-stack">
-      <Flex className="library-page-header" justify="space-between" align="start" gap={16}>
-        <div className="library-page-header-copy">
-          <Title level={2}>{t("songs.title")}</Title>
-          <Text type="secondary">{t("songs.description")}</Text>
-        </div>
-        <Space className="library-page-actions">
-          <Input
-            allowClear
-            className="page-search"
-            prefix={<SearchOutlined />}
-            placeholder={t("search.placeholder", { scope: t("search.songs") })}
-            value={query}
-            onChange={(event) => onChangeQuery(event.target.value)}
-          />
-          <Tooltip title={t("songs.reloadHint")}>
-            <Button
-              aria-label={t("songs.reloadAria")}
-              icon={<ReloadOutlined />}
-              disabled={!selectedTrack}
-              loading={loading}
-              onClick={onReloadTrack}
-            />
-          </Tooltip>
-          {selectionMode ? (
-            <Button icon={<CloseOutlined />} onClick={() => onChangeSelectionMode(false)}>{t("selection.exit")}</Button>
-          ) : (
-            <Button icon={<CheckSquareOutlined />} onClick={() => onChangeSelectionMode(true)}>{t("selection.enter")}</Button>
-          )}
-        </Space>
-      </Flex>
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [dragStart, setDragStart] = useState<{ y: number; path: string } | null>(null);
+  const [dragCurrent, setDragCurrent] = useState<number | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const itemHeight = 48;
+  const dragThreshold = 5;
+  const mouseDownPos = useRef<{ x: number; y: number } | null>(null);
 
-      <Card
-        className="content-card"
-        title={selectedPaths.length ? t("songs.selected", { count: selectedPaths.length }) : t("songs.all")}
-        extra={<Text type="secondary">{t("common.songCount", { count: tracks.length })}</Text>}
-        styles={{ body: { padding: 0 } }}
-      >
-        {selectionMode ? <LibrarySelectionToolbar selectedCount={selectedPaths.length} onOpenBatch={onOpenBatch} /> : null}
-        {tracks.length === 0 && !loading ? (
-          <Empty className="page-empty" image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("songs.empty")} />
-        ) : (
-          <LibraryTable
-            tracks={tracks}
-            loading={loading}
-            selectedPath={selectedPath}
-            selectedPaths={selectedPaths}
-            onSelectTrack={onSelectTrack}
-            onOpenTrack={(track) => onOpenDetails(track.path)}
-            onChangeSelectedPaths={onChangeSelectedPaths}
-            selectionMode={selectionMode}
-            onChangeSelectionMode={onChangeSelectionMode}
-            onOpenBatch={onOpenBatch}
-            showSelectionToolbar={false}
-          />
-        )}
-      </Card>
+  const getVisibleRange = useCallback(() => {
+    const container = containerRef.current;
+    if (!container) return { start: 0, end: tracks.length };
+    const scrollTop = container.scrollTop;
+    const height = container.clientHeight;
+    const start = Math.floor(scrollTop / itemHeight);
+    const end = Math.min(tracks.length, start + Math.ceil(height / itemHeight) + 2);
+    return { start, end };
+  }, [tracks.length]);
+
+  const [, forceUpdate] = useState(0);
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    const handleScroll = () => forceUpdate((n) => n + 1);
+    container.addEventListener("scroll", handleScroll, { passive: true });
+    return () => container.removeEventListener("scroll", handleScroll);
+  }, []);
+
+  const handleMouseDown = useCallback((e: React.MouseEvent, path: string) => {
+    if (e.button !== 0) return;
+    mouseDownPos.current = { x: e.clientX, y: e.clientY };
+    setDragStart({ y: e.clientY, path });
+    setDragCurrent(e.clientY);
+  }, []);
+
+  const handleMouseMove = useCallback((e: React.MouseEvent) => {
+    if (!mouseDownPos.current) return;
+    const dx = Math.abs(e.clientX - mouseDownPos.current.x);
+    const dy = Math.abs(e.clientY - mouseDownPos.current.y);
+    if (!isDragging && (dx > dragThreshold || dy > dragThreshold)) {
+      setIsDragging(true);
+    }
+    if (isDragging) {
+      setDragCurrent(e.clientY);
+    }
+  }, [isDragging]);
+
+  const getPathsInRange = useCallback((startIdx: number, endIdx: number) => {
+    const min = Math.min(startIdx, endIdx);
+    const max = Math.max(startIdx, endIdx);
+    const paths: string[] = [];
+    for (let i = min; i <= max; i++) {
+      if (tracks[i]) paths.push(tracks[i].path);
+    }
+    return paths;
+  }, [tracks]);
+
+  const handleClick = useCallback((path: string) => {
+    const set = new Set(selectedPaths);
+    if (set.has(path)) {
+      set.delete(path);
+    } else {
+      set.add(path);
+    }
+    onChangeSelectedPaths([...set]);
+    onSelectTrack(path);
+  }, [selectedPaths, onSelectTrack, onChangeSelectedPaths]);
+
+  const handleMouseUp = useCallback((e: React.MouseEvent, path: string) => {
+    if (e.button !== 0) return;
+    if (isDragging && dragStart && dragCurrent !== null) {
+      const container = containerRef.current;
+      if (container) {
+        const rect = container.getBoundingClientRect();
+        const scrollTop = container.scrollTop;
+        const startIdx = Math.floor((dragStart.y - rect.top + scrollTop) / itemHeight);
+        const endIdx = Math.floor((dragCurrent - rect.top + scrollTop) / itemHeight);
+        const paths = getPathsInRange(
+          Math.max(0, Math.min(startIdx, tracks.length - 1)),
+          Math.max(0, Math.min(endIdx, tracks.length - 1))
+        );
+        if (e.ctrlKey || e.metaKey) {
+          const set = new Set(selectedPaths);
+          for (const p of paths) {
+            if (set.has(p)) set.delete(p); else set.add(p);
+          }
+          onChangeSelectedPaths([...set]);
+        } else {
+          onChangeSelectedPaths(paths);
+        }
+      }
+    } else if (!isDragging) {
+      if (e.shiftKey && selectedPath) {
+        const startIdx = tracks.findIndex((t) => t.path === selectedPath);
+        const endIdx = tracks.findIndex((t) => t.path === path);
+        if (startIdx >= 0 && endIdx >= 0) {
+          onChangeSelectedPaths(getPathsInRange(startIdx, endIdx));
+        }
+      } else {
+        handleClick(path);
+      }
+    }
+    mouseDownPos.current = null;
+    setDragStart(null);
+    setDragCurrent(null);
+    setIsDragging(false);
+  }, [isDragging, dragStart, dragCurrent, selectedPaths, selectedPath, tracks, onChangeSelectedPaths, getPathsInRange, handleClick]);
+
+  const handleContextMenu = useCallback((e: React.MouseEvent, path: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    onSelectTrack(path);
+    onOpenDetails(path);
+  }, [onSelectTrack, onOpenDetails]);
+
+  const { start, end } = getVisibleRange();
+  const totalHeight = tracks.length * itemHeight;
+  const selectedSet = new Set(selectedPaths);
+
+  let dragSelectRange: { min: number; max: number } | null = null;
+  if (isDragging && dragStart && dragCurrent !== null) {
+    const container = containerRef.current;
+    if (container) {
+      const rect = container.getBoundingClientRect();
+      const scrollTop = container.scrollTop;
+      const startIdx = Math.floor((dragStart.y - rect.top + scrollTop) / itemHeight);
+      const endIdx = Math.floor((dragCurrent - rect.top + scrollTop) / itemHeight);
+      dragSelectRange = {
+        min: Math.max(0, Math.min(startIdx, endIdx)),
+        max: Math.min(tracks.length - 1, Math.max(startIdx, endIdx)),
+      };
+    }
+  }
+
+  return (
+    <div className="songs-page" onContextMenu={(e) => e.preventDefault()}>
+      <div className="songs-header-row">
+        <div className="songs-col-artwork" />
+        <div className="songs-col-filename">{t("table.fileName")}</div>
+        <div className="songs-col-format">{t("table.format")}</div>
+        <div className="songs-col-title">{t("details.titleField")}</div>
+        <div className="songs-col-artist">{t("details.artist")}</div>
+        <div className="songs-col-album">{t("details.album")}</div>
+        <div className="songs-col-albumartist">{t("details.albumArtist")}</div>
+        <div className="songs-col-duration">{t("table.duration")}</div>
+      </div>
+      <div className="songs-list-container" ref={containerRef} onMouseMove={handleMouseMove}>
+        <div className="songs-list-scroll" style={{ height: totalHeight, position: "relative" }}>
+          {tracks.slice(start, end).map((track, i) => {
+            const idx = start + i;
+            const isActive = track.path === selectedPath;
+            const isSelected = selectedSet.has(track.path);
+            const isDragHighlighted = dragSelectRange !== null && idx >= dragSelectRange.min && idx <= dragSelectRange.max;
+            return (
+              <div
+                key={track.path}
+                className={`songs-list-row${isActive ? " row-active" : ""}${isSelected ? " row-selected" : ""}${isDragHighlighted ? " row-drag-highlight" : ""}`}
+                style={{ position: "absolute", top: idx * itemHeight, left: 0, right: 0, height: itemHeight }}
+                onMouseDown={(e) => handleMouseDown(e, track.path)}
+                onMouseUp={(e) => handleMouseUp(e, track.path)}
+                onContextMenu={(e) => handleContextMenu(e, track.path)}
+              >
+                <div className="songs-col-artwork">
+                  <TrackArtwork track={track} size={32} />
+                </div>
+                <div className="songs-col-filename">
+                  <Text ellipsis>{track.fileName}</Text>
+                </div>
+                <div className="songs-col-format">
+                  <Text type="secondary">{track.format || "—"}</Text>
+                </div>
+                <div className="songs-col-title">
+                  <Text ellipsis>{track.title || "—"}</Text>
+                </div>
+                <div className="songs-col-artist">
+                  <Text ellipsis>{track.artist || "—"}</Text>
+                </div>
+                <div className="songs-col-album">
+                  <Text type="secondary" ellipsis>{track.album || "—"}</Text>
+                </div>
+                <div className="songs-col-albumartist">
+                  <Text type="secondary" ellipsis>{track.albumArtist || "—"}</Text>
+                </div>
+                <div className="songs-col-duration">
+                  <Text type="secondary">{formatDuration(track.durationSeconds)}</Text>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 }
