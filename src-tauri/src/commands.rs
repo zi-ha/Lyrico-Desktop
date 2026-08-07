@@ -20,13 +20,28 @@ use rayon::prelude::*;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
+use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter, State};
 use walkdir::WalkDir;
 
 const SCAN_PROGRESS_EVENT: &str = "library-scan-progress";
 const REPLAY_GAIN_PROGRESS_EVENT: &str = "replay-gain-progress";
 static NEXT_SCAN_ID: AtomicU64 = AtomicU64::new(1);
+static SCAN_POOL: OnceLock<rayon::ThreadPool> = OnceLock::new();
+
+fn scan_pool() -> &'static rayon::ThreadPool {
+    SCAN_POOL.get_or_init(|| {
+        let thread_count = std::thread::available_parallelism()
+            .map_or(4, usize::from)
+            .clamp(1, 8);
+        rayon::ThreadPoolBuilder::new()
+            .num_threads(thread_count)
+            .thread_name(|index| format!("Lyrico-Scanner-{index}"))
+            .build()
+            .expect("scan thread pool should build")
+    })
+}
 
 #[tauri::command]
 pub(crate) async fn load_source_plugins(
@@ -644,16 +659,21 @@ fn scan_tracks(
     let mut enumeration_errors = 0;
     let paths = WalkDir::new(root)
         .follow_links(false)
+        .min_depth(1)
         .into_iter()
         .filter_map(|entry| match entry {
-            Ok(entry) => Some(entry),
+            Ok(entry) => {
+                if entry.file_type().is_file() && is_audio_path(entry.path()) {
+                    Some(entry.into_path())
+                } else {
+                    None
+                }
+            }
             Err(_) => {
                 enumeration_errors += 1;
                 None
             }
         })
-        .map(|entry| entry.into_path())
-        .filter(|path| path.is_file() && is_audio_path(path))
         .collect::<Vec<_>>();
     let total = paths.len();
     emit_scan_progress(
@@ -669,58 +689,46 @@ fn scan_tracks(
     );
     let processed = AtomicUsize::new(0);
     let errors = AtomicUsize::new(enumeration_errors);
-    let thread_count = std::thread::available_parallelism()
-        .map_or(2, usize::from)
-        .clamp(1, 4);
-    let pool = rayon::ThreadPoolBuilder::new()
-        .num_threads(thread_count)
-        .thread_name(|index| format!("Lyrico-Scanner-{index}"))
-        .build();
-    let mut tracks = pool
-        .map(|pool| {
-            pool.install(|| {
-                paths
-                    .par_iter()
-                    .filter_map(|path| {
-                        let track = unchanged_track(path, existing_index).or_else(|| {
-                            read_track(path, artist_separator, ArtworkMode::None)
-                                .ok()
-                                .map(AudioTrack::into_summary)
-                        });
-                        if track.is_none() {
-                            errors.fetch_add(1, Ordering::Relaxed);
-                        }
-                        let current = processed.fetch_add(1, Ordering::Relaxed) + 1;
-                        if current == total || current % 8 == 0 {
-                            emit_scan_progress(
-                                app,
-                                job_id,
-                                folder_path,
-                                "reading",
-                                current,
-                                total,
-                                errors.load(Ordering::Relaxed),
-                                "running",
-                                None,
-                            );
-                        }
-                        track
-                    })
-                    .collect::<Vec<_>>()
+    let last_emit_ms = AtomicU64::new(0);
+    let mut tracks = scan_pool().install(|| {
+        paths
+            .par_iter()
+            .filter_map(|path| {
+                let track = unchanged_track(path, existing_index).or_else(|| {
+                    read_track(path, artist_separator, ArtworkMode::None)
+                        .ok()
+                        .map(AudioTrack::into_summary)
+                });
+                if track.is_none() {
+                    errors.fetch_add(1, Ordering::Relaxed);
+                }
+                let current = processed.fetch_add(1, Ordering::Relaxed) + 1;
+                let now_ms = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .map_or(0, |duration| duration.as_millis() as u64);
+                let previous = last_emit_ms.load(Ordering::Relaxed);
+                if current == total || now_ms.saturating_sub(previous) >= 120 {
+                    if last_emit_ms
+                        .compare_exchange(previous, now_ms, Ordering::Relaxed, Ordering::Relaxed)
+                        .is_ok()
+                    {
+                        emit_scan_progress(
+                            app,
+                            job_id,
+                            folder_path,
+                            "reading",
+                            current,
+                            total,
+                            errors.load(Ordering::Relaxed),
+                            "running",
+                            None,
+                        );
+                    }
+                }
+                track
             })
-        })
-        .unwrap_or_else(|_| {
-            paths
-                .iter()
-                .filter_map(|path| {
-                    unchanged_track(path, existing_index).or_else(|| {
-                        read_track(path, artist_separator, ArtworkMode::None)
-                            .ok()
-                            .map(AudioTrack::into_summary)
-                    })
-                })
-                .collect()
-        });
+            .collect::<Vec<_>>()
+    });
     tracks.sort_by(|left, right| {
         left.album
             .cmp(&right.album)

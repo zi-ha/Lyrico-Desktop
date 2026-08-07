@@ -1,6 +1,12 @@
 {
   "tasks": {
     "title": "批处理",
+    "description": "对已选歌曲执行批量操作。",
+    "groups": {
+      "tags": "标签整理",
+      "content": "内容处理",
+      "analysis": "音频分析"
+    },
     "chooseOperation": "选择处理器",
     "noSelection": "尚未选择歌曲",
     "unavailable": "此操作尚未接通",

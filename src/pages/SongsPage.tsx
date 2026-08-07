@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Typography } from "antd";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { Checkbox, Typography } from "antd";
 import { useTranslation } from "react-i18next";
 import type { AudioTrack } from "../app/types";
 import { TrackArtwork } from "../components/TrackArtwork";
@@ -7,7 +7,7 @@ import { formatDuration } from "../utils/format";
 
 const { Text } = Typography;
 
-export function SongsPage({
+export const SongsPage = memo(function SongsPage({
   tracks,
   selectedPath,
   selectedPaths,
@@ -45,9 +45,19 @@ export function SongsPage({
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
-    const handleScroll = () => forceUpdate((n) => n + 1);
+    let frame = 0;
+    const handleScroll = () => {
+      if (frame) return;
+      frame = requestAnimationFrame(() => {
+        frame = 0;
+        forceUpdate((n) => n + 1);
+      });
+    };
     container.addEventListener("scroll", handleScroll, { passive: true });
-    return () => container.removeEventListener("scroll", handleScroll);
+    return () => {
+      container.removeEventListener("scroll", handleScroll);
+      if (frame) cancelAnimationFrame(frame);
+    };
   }, []);
 
   const handleMouseDown = useCallback((e: React.MouseEvent, path: string) => {
@@ -65,7 +75,7 @@ export function SongsPage({
       setIsDragging(true);
     }
     if (isDragging) {
-      setDragCurrent(e.clientY);
+      setDragCurrent((current) => (current == null || Math.abs(e.clientY - current) > 2 ? e.clientY : current));
     }
   }, [isDragging]);
 
@@ -159,6 +169,7 @@ export function SongsPage({
   return (
     <div className="songs-page" onContextMenu={(e) => e.preventDefault()}>
       <div className="songs-header-row">
+        <div className="songs-col-check" />
         <div className="songs-col-artwork" />
         <div className="songs-col-filename">{t("table.fileName")}</div>
         <div className="songs-col-format">{t("table.format")}</div>
@@ -184,6 +195,18 @@ export function SongsPage({
                 onMouseUp={(e) => handleMouseUp(e, track.path)}
                 onContextMenu={(e) => handleContextMenu(e, track.path)}
               >
+                <div
+                  className="songs-col-check"
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onMouseUp={(e) => e.stopPropagation()}
+                >
+                  <Checkbox
+                    checked={isSelected}
+                    onClick={(e) => e.stopPropagation()}
+                    onChange={() => handleClick(track.path)}
+                    aria-label={track.title || track.fileName}
+                  />
+                </div>
                 <div className="songs-col-artwork">
                   <TrackArtwork track={track} size={32} />
                 </div>
@@ -215,4 +238,4 @@ export function SongsPage({
       </div>
     </div>
   );
-}
+});

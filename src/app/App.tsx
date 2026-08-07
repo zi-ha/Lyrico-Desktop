@@ -1,69 +1,23 @@
-import { open, save } from "@tauri-apps/plugin-dialog";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { App as AntApp, ConfigProvider, Form, theme } from "antd";
+import { App as AntApp, ConfigProvider, theme } from "antd";
 import enUS from "antd/locale/en_US";
 import zhCN from "antd/locale/zh_CN";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import {
-  loadLibraryFolders,
-  loadArtistSplitConfig,
-  loadLibraryTrack,
-  loadLibraryTracks,
-  loadBatchTaskItems,
-  readAudioFile,
-  readImageFile,
-  readTextFile,
-  removeLibraryFolder,
-  saveAudioTags,
-  saveArtistSplitConfig,
-  analyzeReplayGain,
-  cancelBatchTask,
-  cancelReplayGain,
-  scanFolder,
-  upsertLibraryFolder,
-  writeTextFile,
-  writeImageFile,
-  loadSourcePlugins,
-  loadDesktopSettings,
-  installSourcePluginArchive,
-  saveSourcePluginSettings,
-  saveDesktopSettings,
-  setSourcePluginEnabled,
-  uninstallSourcePlugin,
-} from "../backend/audioApi";
+import { loadBatchTaskItems } from "../backend/audioApi";
 import { Shell } from "../components/Shell";
 import { SongDetails } from "../components/SongDetails";
-import { defaultArtistSplitConfig } from "../domain/library";
-import { completeTagForm, splitGenreValues } from "../domain/tagForm";
-import { detectLyricsFormat } from "../backend/lyricsApi";
-import { updateCachedCover } from "../hooks/useTrackCovers";
-import {
-  getLanguagePreference,
-  resolveLanguage,
-  setLanguagePreference as persistLanguagePreference,
-  type LanguagePreference,
-} from "../i18n";
-import { FoldersPage } from "../pages/FoldersPage";
+import { normalizePath } from "../domain/libraryPath";
+import { useLibrary } from "../hooks/useLibrary";
+import { usePlugins } from "../hooks/usePlugins";
+import { useSelection } from "../hooks/useSelection";
+import { useSettings } from "../hooks/useSettings";
+import { useSongEditor } from "../hooks/useSongEditor";
 import { LibraryPage } from "../pages/LibraryPage";
 import { SettingsPage } from "../pages/SettingsPage";
 import { ToolsPage } from "../pages/ToolsPage";
-import type { ArtistSplitConfig, AudioTrack, BatchTask, BatchTaskItem, DesktopSettings, LibraryFolder, ScanProgress, SourcePlugin, TagForm, ViewKey } from "./types";
-import { getReplayGainProgress, publishReplayGainProgress } from "../hooks/useReplayGainProgress";
+import type { BatchTask, BatchTaskItem, ViewKey } from "./types";
 import "../App.css";
-
-const defaultDesktopSettings: DesktopSettings = {
-  searchPageSize: 10,
-  lyricFormat: "verbatimLrc",
-  lyricsConversionMode: "none",
-  showTranslation: true,
-  showRomanization: true,
-  onlyTranslationIfAvailable: false,
-  removeEmptyLyricLines: true,
-  renameCharacterMappings: {
-    "\\": "＼", "/": "／", ":": "：", "*": "＊", "?": "？", "\"": "＂", "<": "＜", ">": "＞", "|": "｜",
-  },
-};
 
 export default function App() {
   const { i18n } = useTranslation();
@@ -72,6 +26,12 @@ export default function App() {
   useEffect(() => {
     document.documentElement.lang = i18n.resolvedLanguage ?? "en-US";
   }, [i18n.resolvedLanguage]);
+
+  useEffect(() => {
+    const suppressContextMenu = (event: MouseEvent) => event.preventDefault();
+    window.addEventListener("contextmenu", suppressContextMenu);
+    return () => window.removeEventListener("contextmenu", suppressContextMenu);
+  }, []);
 
   return (
     <ConfigProvider
@@ -97,55 +57,25 @@ function LyricoDesktop() {
   const { message } = AntApp.useApp();
   const { t, i18n } = useTranslation();
   const [activeView, setActiveView] = useState<ViewKey>("library");
-  const [tracks, setTracks] = useState<AudioTrack[]>([]);
-  const [folders, setFolders] = useState<LibraryFolder[]>([]);
-  const [selectedPath, setSelectedPath] = useState<string>();
-  const [selectedPaths, setSelectedPaths] = useState<string[]>([]);
-  const [selectionMode, setSelectionMode] = useState(false);
-  const [selectedFolderPath, setSelectedFolderPath] = useState<string>();
-  const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [detailsLoading, setDetailsLoading] = useState(false);
-  const [detailTrack, setDetailTrack] = useState<AudioTrack>();
-  const [detailsOpen, setDetailsOpen] = useState(false);
-  const [plugins, setPlugins] = useState<SourcePlugin[]>([]);
-  const [artistSplitConfig, setArtistSplitConfig] = useState<ArtistSplitConfig>(defaultArtistSplitConfig);
-  const [desktopSettings, setDesktopSettings] = useState<DesktopSettings>(defaultDesktopSettings);
-  const [languagePreference, setLanguagePreference] = useState<LanguagePreference>(getLanguagePreference);
-  const [scanProgress, setScanProgress] = useState<ScanProgress>();
-  const [form] = Form.useForm<TagForm>();
-  const detailRequest = useRef(0);
-  const artistSplitSaveQueue = useRef<Promise<void>>(Promise.resolve());
-  const settingsSaveQueue = useRef<Promise<void>>(Promise.resolve());
-  const selectedTrackSummary = tracks.find((track) => track.path === selectedPath);
-  const selectedTrack = detailTrack?.path === selectedPath ? detailTrack : selectedTrackSummary;
-  const selectedTracks = useMemo(() => {
-    const byPath = new Map(tracks.map((track) => [track.path, track]));
-    return selectedPaths.flatMap((path) => {
-      const track = byPath.get(path);
-      return track ? [track] : [];
-    });
-  }, [selectedPaths, tracks]);
 
-  useEffect(() => {
-    Promise.all([loadLibraryFolders(), loadLibraryTracks(), loadArtistSplitConfig(), loadSourcePlugins(), loadDesktopSettings()])
-      .then(([storedFolders, storedTracks, storedArtistSplitConfig, storedPlugins, storedSettings]) => {
-        setFolders(storedFolders);
-        setTracks(storedTracks);
-        setSelectedFolderPath(storedFolders[0]?.path);
-        setSelectedPath(storedTracks[0]?.path);
-        setSelectedPaths([]);
-        setArtistSplitConfig(storedArtistSplitConfig);
-        setPlugins(storedPlugins);
-        setDesktopSettings(storedSettings);
-      })
-      .catch(() => {
-        setFolders([]);
-        setTracks([]);
-        setPlugins([]);
-        setDesktopSettings(defaultDesktopSettings);
-      });
-  }, []);
+  const selection = useSelection();
+  const library = useLibrary(
+    message,
+    t,
+    selection.setSelectedPath,
+    selection.setSelectedFolderPath,
+    selection.applyInitialSelection,
+  );
+  const editor = useSongEditor({
+    tracks: library.tracks,
+    selectedPath: selection.selectedPath,
+    setSelectedPath: selection.setSelectedPath,
+    replaceTrack: library.replaceTrack,
+    message,
+    t,
+  });
+  const plugins = usePlugins(message, t);
+  const settings = useSettings(i18n, message);
 
   useEffect(() => {
     let disposed = false;
@@ -153,16 +83,14 @@ function LyricoDesktop() {
     void listen<BatchTask>("batch-task-updated", ({ payload }) => {
       if (!disposed && ["succeeded", "failed", "cancelled"].includes(payload.status)) {
         void Promise.all([
-          loadLibraryTracks(),
+          library.reloadTracks(),
           payload.taskType === "renameFiles" ? loadBatchTaskItems(payload.taskId) : Promise.resolve([]),
-        ]).then(([nextTracks, items]) => {
+        ]).then(([, items]) => {
           if (disposed) return;
-          setTracks(nextTracks);
           const renamedPaths = renamePathMap(items);
           if (renamedPaths.size === 0) return;
-          setSelectedPath((current) => current ? renamedPaths.get(normalizePath(current)) ?? current : current);
-          setSelectedPaths((current) => current.map((path) => renamedPaths.get(normalizePath(path)) ?? path));
-          setDetailTrack((current) => current && renamedPaths.has(normalizePath(current.path)) ? undefined : current);
+          selection.applyRenamedPaths(renamedPaths);
+          editor.clearRenamedTrack(renamedPaths);
         }).catch(() => undefined);
       }
     }).then((dispose) => {
@@ -173,446 +101,56 @@ function LyricoDesktop() {
       disposed = true;
       unlisten?.();
     };
-  }, []);
+  }, [editor.clearRenamedTrack, library.reloadTracks, selection.applyRenamedPaths]);
 
-  useEffect(() => {
-    let disposed = false;
-    let unlisten: UnlistenFn | undefined;
-    void listen<ScanProgress>("library-scan-progress", ({ payload }) => {
-      setScanProgress(payload);
-    }).then((dispose) => {
-      if (disposed) dispose();
-      else unlisten = dispose;
-    });
-    return () => {
-      disposed = true;
-      unlisten?.();
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!scanProgress || scanProgress.status === "running") return;
-    const timeout = window.setTimeout(() => setScanProgress(undefined), 4000);
-    return () => window.clearTimeout(timeout);
-  }, [scanProgress]);
-
-  useEffect(() => {
-    if (languagePreference !== "system") return;
-    const handleLanguageChange = () => void i18n.changeLanguage(resolveLanguage("system"));
-    window.addEventListener("languagechange", handleLanguageChange);
-    return () => window.removeEventListener("languagechange", handleLanguageChange);
-  }, [i18n, languagePreference]);
-
-  useEffect(() => {
-    if (!selectedTrack) {
-      form.resetFields();
-      return;
-    }
-    form.resetFields();
-    form.setFieldsValue({
-      title: selectedTrack.title,
-      artist: selectedTrack.artist,
-      album: selectedTrack.album,
-      albumArtist: selectedTrack.albumArtist,
-      trackNumber: selectedTrack.trackNumber,
-      discNumber: selectedTrack.discNumber,
-      year: selectedTrack.year,
-      genre: splitGenreValues(selectedTrack.genre),
-      language: selectedTrack.language,
-      composer: selectedTrack.composer,
-      lyricist: selectedTrack.lyricist,
-      copyright: selectedTrack.copyright,
-      rating: selectedTrack.rating,
-      comment: selectedTrack.comment,
-      lyrics: selectedTrack.lyrics,
-      replayGainTrackGain: selectedTrack.replayGainTrackGain,
-      replayGainTrackPeak: selectedTrack.replayGainTrackPeak,
-      replayGainAlbumGain: selectedTrack.replayGainAlbumGain,
-      replayGainAlbumPeak: selectedTrack.replayGainAlbumPeak,
-      replayGainReferenceLoudness: selectedTrack.replayGainReferenceLoudness,
-      coverDataUrl: undefined,
-      removeCover: false,
-    });
-  }, [form, selectedTrack]);
-
-  async function addFolders() {
-    const selected = await open({ directory: true, multiple: true, title: t("folders.add") });
-    const selectedPaths = Array.isArray(selected) ? selected : typeof selected === "string" ? [selected] : [];
-    const newPaths = selectedPaths.filter((path) => !folders.some((folder) => samePath(folder.path, path)));
-    if (newPaths.length === 0) return;
-    for (const path of newPaths) await scanAndMergeFolder(path);
-  }
-
-  async function scanAndMergeFolder(path: string) {
-    setLoading(true);
-    setFolders((current) => upsertFolder(current, { path, trackCount: 0, status: "scanning" }));
-    try {
-      const folderTracks = await scanFolder(path);
-      const scannedAt = new Date().toISOString();
-      setTracks((current) => mergeFolderTracks(current, folderTracks, path));
-      setFolders((current) =>
-        upsertFolder(current, { path, trackCount: folderTracks.length, status: "ready", lastScannedAt: scannedAt }),
-      );
-      setSelectedFolderPath(path);
-      setSelectedPath((current) => current ?? folderTracks[0]?.path);
-      message.success(t("messages.scanned", { count: folderTracks.length }));
-    } catch (error) {
-      const failedFolder = { path, trackCount: 0, status: "error" as const, error: String(error) };
-      setFolders((current) => upsertFolder(current, failedFolder));
-      await upsertLibraryFolder(failedFolder).catch(() => undefined);
-      message.error(String(error));
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  function selectTrack(path?: string) {
-    setSelectedPath(path);
-    if (detailTrack?.path !== path) setDetailTrack(undefined);
-  }
-
-  async function openTrackDetails(path = selectedPath) {
-    if (!path) return;
-    setSelectedPath(path);
-    setDetailsOpen(true);
-    if (detailTrack?.path === path) return;
-
-    const requestId = ++detailRequest.current;
-    setDetailTrack(undefined);
-    setDetailsLoading(true);
-    try {
-      const fullTrack = await loadLibraryTrack(path);
-      if (requestId === detailRequest.current) setDetailTrack(fullTrack);
-    } catch (error) {
-      if (requestId === detailRequest.current) message.error(String(error));
-    } finally {
-      if (requestId === detailRequest.current) setDetailsLoading(false);
-    }
-  }
-
-  async function refreshSelected() {
-    if (!selectedTrack) return;
-    setLoading(true);
-    try {
-      const refreshed = await readAudioFile(selectedTrack.path);
-      replaceTrack(refreshed);
-      setDetailTrack(refreshed);
-      message.success(t("messages.reloaded"));
-    } catch (error) {
-      message.error(String(error));
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function saveSelected() {
-    if (!selectedTrack) {
-      message.warning(t("messages.selectSong"));
-      return;
-    }
-    setSaving(true);
-    try {
-      await form.validateFields();
-      const values = completeTagForm(form.getFieldsValue(true), selectedTrack);
-      const saved = await saveAudioTags(selectedTrack.path, values);
-      replaceTrack(saved);
-      setDetailTrack(saved);
-      setSelectedPath(saved.path);
-      message.success(t("messages.saved"));
-    } catch (error) {
-      message.error(String(error));
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function calculateSelectedReplayGain() {
-    if (!selectedTrack || getReplayGainProgress()?.status === "running") return;
-    const jobId = crypto.randomUUID();
-    publishReplayGainProgress({ jobId, path: selectedTrack.path, percent: 0, status: "running" });
-    try {
-      const result = await analyzeReplayGain(selectedTrack.path, jobId);
-      form.setFieldsValue({
-        replayGainTrackGain: result.trackGain,
-        replayGainTrackPeak: result.trackPeak,
-        replayGainReferenceLoudness: result.referenceLoudness,
-      });
-      message.success(t("messages.replayGainCalculated"));
-    } catch (error) {
-      if (!String(error).toLocaleLowerCase().includes("cancelled")) message.error(String(error));
-    }
-  }
-
-  async function cancelActiveReplayGain() {
-    const progress = getReplayGainProgress();
-    if (progress?.status !== "running") return;
-    const batchTaskId = progress.jobId.includes(":") ? progress.jobId.split(":", 1)[0] : undefined;
-    const request = batchTaskId?.startsWith("batch-") ? cancelBatchTask(batchTaskId) : cancelReplayGain(progress.jobId);
-    await request.catch((error) => message.error(String(error)));
-  }
-
-  async function chooseLocalCover() {
-    const selected = await open({
-      multiple: false,
-      title: t("cover.choose"),
-      filters: [{ name: t("cover.images"), extensions: ["jpg", "jpeg", "png", "webp", "gif"] }],
-    });
-    if (typeof selected !== "string") return;
-    try {
-      const coverDataUrl = await readImageFile(selected);
-      form.setFieldsValue({ coverDataUrl, removeCover: false });
-    } catch (error) {
-      message.error(String(error));
-    }
-  }
-
-  async function useSameAlbumCover() {
-    if (!selectedTrack?.album) return;
-    const candidate = tracks.find((track) =>
-      track.path !== selectedTrack.path && track.hasCover && track.album === selectedTrack.album,
-    );
-    if (!candidate) {
-      message.warning(t("cover.noAlbumCover"));
-      return;
-    }
-    try {
-      const source = await loadLibraryTrack(candidate.path);
-      if (!source.coverDataUrl) throw new Error(t("cover.noAlbumCover"));
-      form.setFieldsValue({ coverDataUrl: source.coverDataUrl, removeCover: false });
-    } catch (error) {
-      message.error(String(error));
-    }
-  }
-
-  function removeSelectedCover() {
-    form.setFieldsValue({ coverDataUrl: undefined, removeCover: true });
-  }
-
-  function revertSelectedCover() {
-    form.setFieldsValue({ coverDataUrl: undefined, removeCover: false });
-  }
-
-  async function exportSelectedCover() {
-    if (!selectedTrack || form.getFieldValue("removeCover")) {
-      message.warning(t("cover.empty"));
-      return;
-    }
-    const dataUrl = String(form.getFieldValue("coverDataUrl") ?? selectedTrack.coverDataUrl ?? "");
-    if (!dataUrl) {
-      message.warning(t("cover.empty"));
-      return;
-    }
-    const extension = dataUrl.startsWith("data:image/png") ? "png" : dataUrl.startsWith("data:image/webp") ? "webp" : dataUrl.startsWith("data:image/gif") ? "gif" : "jpg";
-    const baseName = selectedTrack.fileName.replace(/\.[^.]+$/, "");
-    const destination = await save({
-      title: t("cover.export"),
-      defaultPath: `${baseName}-cover.${extension}`,
-      filters: [{ name: t("cover.images"), extensions: [extension] }],
-    });
-    if (!destination) return;
-    try {
-      await writeImageFile(destination, dataUrl);
-      message.success(t("messages.coverExported"));
-    } catch (error) {
-      message.error(String(error));
-    }
-  }
-
-  async function importLyricsFile() {
-    const selected = await open({
-      multiple: false,
-      title: t("lyrics.import"),
-      filters: [{ name: t("lyrics.files"), extensions: ["lrc", "ttml", "txt"] }],
-    });
-    if (typeof selected !== "string") return;
-    try {
-      form.setFieldValue("lyrics", await readTextFile(selected));
-      message.success(t("messages.lyricsImported"));
-    } catch (error) {
-      message.error(String(error));
-    }
-  }
-
-  async function exportLyricsFile() {
-    const lyrics = String(form.getFieldValue("lyrics") ?? "");
-    if (!lyrics.trim() || !selectedTrack) {
-      message.warning(t("lyrics.empty"));
-      return;
-    }
-    try {
-      const extension = await detectLyricsFormat(lyrics) === "ttml" ? "ttml" : "lrc";
-      const baseName = selectedTrack.fileName.replace(/\.[^.]+$/, "");
-      const destination = await save({
-        title: t("lyrics.export"),
-        defaultPath: `${baseName}.${extension}`,
-        filters: [{ name: extension.toUpperCase(), extensions: [extension] }],
-      });
-      if (!destination) return;
-      await writeTextFile(destination, lyrics);
-      message.success(t("messages.lyricsExported"));
-    } catch (error) {
-      message.error(String(error));
-    }
-  }
-
-  async function removeFolder(path: string) {
-    setFolders((current) => current.filter((folder) => !samePath(folder.path, path)));
-    setTracks((current) => current.filter((track) => !isTrackUnderFolder(track.path, path)));
-    setSelectedPaths((current) => current.filter((trackPath) => !isTrackUnderFolder(trackPath, path)));
-    if (samePath(selectedFolderPath ?? "", path)) setSelectedFolderPath(undefined);
-    if (selectedPath && isTrackUnderFolder(selectedPath, path)) selectTrack(undefined);
-    await removeLibraryFolder(path).catch((error) => message.error(String(error)));
-  }
-
-  function replaceTrack(nextTrack: AudioTrack) {
-    setTracks((current) => current.map((track) => (samePath(track.path, nextTrack.path) ? nextTrack : track)));
-    updateCachedCover(nextTrack.path, nextTrack.coverDataUrl);
-  }
-
-  async function installPlugin() {
-    const archivePath = await open({
-      title: t("sources.install"),
-      multiple: false,
-      directory: false,
-      filters: [{ name: "Lyrico plugin", extensions: ["zip"] }],
-    });
-    if (typeof archivePath !== "string") return;
-    try {
-      const result = await installSourcePluginArchive(archivePath);
-      setPlugins(await loadSourcePlugins());
-      if (result.installed.length) message.success(t("sources.installSuccess", { count: result.installed.length }));
-      if (result.failed.length) {
-        message.error(result.failed.map((failure) => failure.reason).join("; "));
-      }
-    } catch (error) {
-      message.error(String(error));
-    }
-  }
-
-  async function changePluginEnabled(pluginId: string, enabled: boolean) {
-    try {
-      setPlugins(await setSourcePluginEnabled(pluginId, enabled));
-    } catch (error) {
-      message.error(String(error));
-    }
-  }
-
-  async function savePluginConfig(pluginId: string, config: Record<string, string>) {
-    try {
-      setPlugins(await saveSourcePluginSettings(pluginId, config));
-      message.success(t("sources.configSaved"));
-    } catch (error) {
-      message.error(String(error));
-      throw error;
-    }
-  }
-
-  async function uninstallPlugin(pluginId: string) {
-    try {
-      setPlugins(await uninstallSourcePlugin(pluginId));
-      message.success(t("sources.uninstallSuccess"));
-    } catch (error) {
-      message.error(String(error));
-      throw error;
-    }
-  }
-
-  function changeLanguage(preference: LanguagePreference) {
-    setLanguagePreference(preference);
-    void persistLanguagePreference(preference);
-  }
-
-  function changeArtistSplitConfig(config: ArtistSplitConfig) {
-    setArtistSplitConfig(config);
-    artistSplitSaveQueue.current = artistSplitSaveQueue.current
-      .then(() => saveArtistSplitConfig(config))
-      .catch((error) => {
-        message.error(String(error));
-      });
-  }
-
-  function changeDesktopSettings(settings: DesktopSettings) {
-    setDesktopSettings(settings);
-    settingsSaveQueue.current = settingsSaveQueue.current
-      .then(() => saveDesktopSettings(settings))
-      .catch((error) => {
-        message.error(String(error));
-      });
-  }
-
-  function openBatchForSelection() {
-    if (selectedPaths.length === 0) {
-      message.warning(t("messages.selectSongs"));
-      return;
-    }
-    setDetailsOpen(false);
-    setSelectionMode(false);
-    setActiveView("tools");
-  }
-
-  function changeSelectionMode(enabled: boolean) {
-    setSelectedPaths([]);
-    setSelectionMode(enabled);
-  }
+  const handleRemoveFolder = useCallback((path: string) => {
+    selection.clearUnderFolder(path);
+    void library.removeFolderTracks(path);
+  }, [library.removeFolderTracks, selection.clearUnderFolder]);
 
   function renderActivePage() {
     switch (activeView) {
       case "library":
         return (
           <LibraryPage
-            tracks={tracks}
-            selectedPath={selectedPath}
-            selectedPaths={selectedPaths}
-            onSelectTrack={selectTrack}
-            onChangeSelectedPaths={setSelectedPaths}
-            onOpenDetails={openTrackDetails}
-          />
-        );
-      case "folders":
-        return (
-          <FoldersPage
-            folders={folders}
-            tracks={tracks}
-            selectedFolderPath={selectedFolderPath}
-            selectedTrackPath={selectedPath}
-            loading={loading}
-            onAddFolders={addFolders}
-            onRescanFolder={scanAndMergeFolder}
-            onRemoveFolder={removeFolder}
-            onSelectFolder={setSelectedFolderPath}
-            onSelectTrack={selectTrack}
-            onOpenTrack={openTrackDetails}
-            selectedPaths={selectedPaths}
-            selectionMode={selectionMode}
-            onChangeSelectedPaths={setSelectedPaths}
-            onChangeSelectionMode={changeSelectionMode}
-            onOpenBatch={openBatchForSelection}
+            tracks={library.tracks}
+            selectedPath={selection.selectedPath}
+            selectedPaths={selection.selectedPaths}
+            onSelectTrack={selection.selectTrack}
+            onChangeSelectedPaths={selection.setSelectedPaths}
+            onOpenDetails={editor.openTrackDetails}
           />
         );
       case "tools":
         return (
           <ToolsPage
-            tracks={tracks}
-            plugins={plugins}
-            selectedPaths={selectedPaths}
-            settings={desktopSettings}
-            artistSeparator={artistSplitConfig.artistSeparator}
-            onChangeSettings={changeDesktopSettings}
-            onInstallPlugin={installPlugin}
-            onChangePluginEnabled={changePluginEnabled}
-            onSavePluginConfig={savePluginConfig}
-            onUninstallPlugin={uninstallPlugin}
+            tracks={library.tracks}
+            plugins={plugins.plugins}
+            selectedPaths={selection.selectedPaths}
+            settings={settings.desktopSettings}
+            artistSeparator={settings.artistSplitConfig.artistSeparator}
+            onChangeSettings={settings.changeDesktopSettings}
           />
         );
       case "settings":
         return (
           <SettingsPage
-            languagePreference={languagePreference}
-            artistSplitConfig={artistSplitConfig}
-            settings={desktopSettings}
-            onChangeLanguage={changeLanguage}
-            onChangeArtistSplitConfig={changeArtistSplitConfig}
-            onChangeSettings={changeDesktopSettings}
+            languagePreference={settings.languagePreference}
+            artistSplitConfig={settings.artistSplitConfig}
+            settings={settings.desktopSettings}
+            plugins={plugins.plugins}
+            folders={library.folders}
+            loading={library.loading}
+            onChangeLanguage={settings.changeLanguage}
+            onChangeArtistSplitConfig={settings.changeArtistSplitConfig}
+            onChangeSettings={settings.changeDesktopSettings}
+            onInstallPlugin={plugins.installPlugin}
+            onChangePluginEnabled={plugins.changePluginEnabled}
+            onSavePluginConfig={plugins.savePluginConfig}
+            onUninstallPlugin={plugins.uninstallPlugin}
+            onAddFolders={library.addFolders}
+            onRescanFolder={library.scanAndMergeFolder}
+            onRemoveFolder={handleRemoveFolder}
           />
         );
       default:
@@ -624,46 +162,36 @@ function LyricoDesktop() {
     <>
     <Shell
       activeView={activeView}
-      folders={folders}
-      trackCount={tracks.length}
-      scanProgress={scanProgress}
-      selectedTracks={selectedTracks}
+      folders={library.folders}
+      trackCount={library.tracks.length}
       onChangeView={setActiveView}
-      onCancelReplayGain={cancelActiveReplayGain}
-      onRemoveSelectedTrack={(path) => setSelectedPaths((current) => current.filter((candidate) => candidate !== path))}
-      onClearSelectedTracks={() => setSelectedPaths([])}
-      onOpenSelectedBatch={openBatchForSelection}
+      onCancelReplayGain={editor.cancelActiveReplayGain}
     >
       {renderActivePage()}
       <SongDetails
-        open={detailsOpen}
-        loading={detailsLoading}
-        track={selectedTrack}
-        plugins={plugins}
-        settings={desktopSettings}
-        form={form}
-        saving={saving}
-        onSave={saveSelected}
-        onReload={refreshSelected}
-        onCalculateReplayGain={calculateSelectedReplayGain}
-        onCancelReplayGain={cancelActiveReplayGain}
-        onChooseCover={chooseLocalCover}
-        onUseSameAlbumCover={useSameAlbumCover}
-        onRemoveCover={removeSelectedCover}
-        onRevertCover={revertSelectedCover}
-        onExportCover={exportSelectedCover}
-        onImportLyrics={importLyricsFile}
-        onExportLyrics={exportLyricsFile}
-        onClose={() => setDetailsOpen(false)}
+        open={editor.detailsOpen}
+        loading={editor.detailsLoading}
+        track={editor.selectedTrack}
+        plugins={plugins.plugins}
+        settings={settings.desktopSettings}
+        form={editor.form}
+        saving={editor.saving}
+        onSave={editor.saveSelected}
+        onReload={editor.refreshSelected}
+        onCalculateReplayGain={editor.calculateSelectedReplayGain}
+        onCancelReplayGain={editor.cancelActiveReplayGain}
+        onChooseCover={editor.chooseLocalCover}
+        onUseSameAlbumCover={editor.useSameAlbumCover}
+        onRemoveCover={editor.removeSelectedCover}
+        onRevertCover={editor.revertSelectedCover}
+        onExportCover={editor.exportSelectedCover}
+        onImportLyrics={editor.importLyricsFile}
+        onExportLyrics={editor.exportLyricsFile}
+        onClose={editor.closeSongDetails}
       />
     </Shell>
     </>
   );
-}
-
-function upsertFolder(folders: LibraryFolder[], folder: LibraryFolder) {
-  const rest = folders.filter((candidate) => !samePath(candidate.path, folder.path));
-  return [...rest, folder].sort((left, right) => left.path.localeCompare(right.path));
 }
 
 function renamePathMap(items: BatchTaskItem[]) {
@@ -678,32 +206,4 @@ function renamePathMap(items: BatchTaskItem[]) {
     }
   }
   return paths;
-}
-
-function mergeFolderTracks(current: AudioTrack[], folderTracks: AudioTrack[], folderPath: string) {
-  const remaining = current.filter((track) => !isTrackUnderFolder(track.path, folderPath));
-  const seen = new Set<string>();
-  return [...remaining, ...folderTracks].filter((track) => {
-    const key = normalizePath(track.path);
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
-}
-
-function isTrackUnderFolder(trackPath: string, folderPath: string) {
-  return normalizePath(trackPath).startsWith(normalizeFolderPath(folderPath));
-}
-
-function samePath(left: string, right: string) {
-  return normalizePath(left) === normalizePath(right);
-}
-
-function normalizeFolderPath(path: string) {
-  const normalized = normalizePath(path);
-  return normalized.endsWith("/") ? normalized : `${normalized}/`;
-}
-
-function normalizePath(path: string) {
-  return path.replace(/\\/g, "/").toLocaleLowerCase();
 }

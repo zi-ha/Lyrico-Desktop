@@ -7,6 +7,13 @@
     "library": "音乐库",
     "metadata": "元数据",
     "integrations": "数据源",
+    "sources": "插件源",
+    "folders": "文件夹",
+    "groups": {
+      "general": "常规",
+      "content": "在线内容",
+      "library": "音乐库"
+    },
     "about": "关于",
     "language": "语言",
     "languageHint": "“跟随系统”使用 Windows 显示语言，不支持时回退到英语。",
@@ -16,7 +23,7 @@
     "interface": "界面",
     "startup": "启动行为",
     "startupTitle": "优先读取数据库",
-    "startupDescription": "Lyrico 启动时只从 SQLite 读取轻量歌曲摘要；仅在添加文件夹或手动重新扫描时读取音频文件。",
+    "startupDescription": "Lyrico 启动时会自动扫描一次已配置的音乐库文件夹；未变化的文件直接复用数据库摘要以加快速度。",
     "manageFolders": "管理文件夹",
     "librarySummary": "音乐库概况",
     "persistence": "持久化",

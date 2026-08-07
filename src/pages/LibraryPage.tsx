@@ -1,7 +1,8 @@
+import { memo } from "react";
 import type { AudioTrack } from "../app/types";
 import { SongsPage } from "./SongsPage";
 
-export function LibraryPage({
+export const LibraryPage = memo(function LibraryPage({
   tracks,
   selectedPath,
   selectedPaths,
@@ -26,4 +27,4 @@ export function LibraryPage({
       onOpenDetails={onOpenDetails}
     />
   );
-}
+});

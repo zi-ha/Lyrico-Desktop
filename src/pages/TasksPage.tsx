@@ -10,8 +10,9 @@ import {
 } from "@ant-design/icons";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
-import { App, Button, Checkbox, Input, InputNumber, Modal, Progress, Rate, Select, Space, Table, Tag, Tooltip, Typography, type TableColumnsType } from "antd";
-import { useEffect, useMemo, useRef, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
+import { App, Button, Checkbox, Input, InputNumber, Modal, Progress, Rate, Select, Space, Table, Tag, Typography, type TableColumnsType } from "antd";
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
+import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import type { AudioTrack, BatchTask, CharacterMappingRule, DesktopSettings, RenamePreview, SourcePlugin } from "../app/types";
 import { cancelBatchTask, createBatchTask, loadBatchTasks, previewBatchRename, readImageFile, startBatchTask } from "../backend/audioApi";
@@ -19,7 +20,16 @@ import { TrackArtwork } from "../components/TrackArtwork";
 import { LYRIC_FORMATS, type LyricFormat } from "../backend/lyricsApi";
 import { clearFinishedTask, currentActiveTask, isActiveTask, mergeBatchTaskSnapshot } from "../domain/batchTasks";
 
-const { Title, Text } = Typography;
+const { Text } = Typography;
+
+function usePortalSlot() {
+  const ref = useRef<HTMLDivElement>(null);
+  const [element, setElement] = useState<HTMLElement | null>(null);
+  useLayoutEffect(() => {
+    setElement(ref.current);
+  }, []);
+  return { ref, element };
+}
 
 type GainRow = {
   path: string;
@@ -103,22 +113,10 @@ const defaultTagLineKeywords = [
   "出品：", "出品:", "发行：", "发行:",
 ];
 
-const availableOperations = new Set<BatchOperation>(["metadata", "edit", "rename", "lyrics", "exportLyrics", "exportCover", "replaygain"]);
-
-const operationIcons: Record<BatchOperation, ReactNode> = {
-  metadata: <TagsOutlined />,
-  edit: <EditOutlined />,
-  rename: <FormOutlined />,
-  lyrics: <FileTextOutlined />,
-  exportLyrics: <ExportOutlined />,
-  exportCover: <ExportOutlined />,
-  replaygain: <CalculatorOutlined />,
-};
-
-export function TasksPage({ tracks, plugins, selectedPaths, settings, artistSeparator, onChangeSettings }: { tracks: AudioTrack[]; plugins: SourcePlugin[]; selectedPaths: string[]; settings: DesktopSettings; artistSeparator: string; onChangeSettings: (settings: DesktopSettings) => void }) {
+export const TasksPage = memo(function TasksPage({ tracks, plugins, selectedPaths, settings, artistSeparator, onChangeSettings }: { tracks: AudioTrack[]; plugins: SourcePlugin[]; selectedPaths: string[]; settings: DesktopSettings; artistSeparator: string; onChangeSettings: (settings: DesktopSettings) => void }) {
   const { t } = useTranslation();
   const { message } = App.useApp();
-  const [operation, setOperation] = useState<BatchOperation>("replaygain");
+  const [operation, setOperation] = useState<BatchOperation>("metadata");
   const [activeReplayGainTask, setActiveReplayGainTask] = useState<BatchTask>();
   const [activeEditTask, setActiveEditTask] = useState<BatchTask>();
   const [activeLyricsTask, setActiveLyricsTask] = useState<BatchTask>();
@@ -127,9 +125,26 @@ export function TasksPage({ tracks, plugins, selectedPaths, settings, artistSepa
   const [activeExportLyricsTask, setActiveExportLyricsTask] = useState<BatchTask>();
   const [activeExportCoverTask, setActiveExportCoverTask] = useState<BatchTask>();
   const [submitting, setSubmitting] = useState(false);
+  const actionSlot = usePortalSlot();
+  const configSlot = usePortalSlot();
+  const panelWrapRef = useRef<HTMLElement>(null);
+  const [tableHeight, setTableHeight] = useState(420);
+  useLayoutEffect(() => {
+    const element = panelWrapRef.current;
+    if (!element) return;
+    const compute = () => {
+      const rect = element.getBoundingClientRect();
+      const header = element.querySelector<HTMLElement>(".batch-table .ant-table-header");
+      const headerHeight = header?.offsetHeight ?? 40;
+      setTableHeight(Math.max(200, Math.floor(rect.height - headerHeight)));
+    };
+    compute();
+    const observer = new ResizeObserver(compute);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [operation]);
   const selectedSet = useMemo(() => new Set(selectedPaths), [selectedPaths]);
   const selectedTracks = useMemo(() => tracks.filter((track) => selectedSet.has(track.path)), [selectedSet, tracks]);
-  const operations = ["metadata", "edit", "rename", "lyrics", "exportLyrics", "exportCover", "replaygain"] as BatchOperation[];
   const replayGainIsActive = isActiveTask(activeReplayGainTask);
   const editIsActive = isActiveTask(activeEditTask);
   const lyricsIsActive = isActiveTask(activeLyricsTask);
@@ -411,33 +426,39 @@ export function TasksPage({ tracks, plugins, selectedPaths, settings, artistSepa
     }
   }
 
+  const operationGroups: { label: string; keys: BatchOperation[] }[] = [
+    { label: t("tasks.groups.tags"), keys: ["metadata", "edit", "rename"] },
+    { label: t("tasks.groups.content"), keys: ["lyrics", "exportLyrics", "exportCover"] },
+    { label: t("tasks.groups.analysis"), keys: ["replaygain"] },
+  ];
+
   return (
     <div className="workspace page-stack tasks-view">
-      <header className="batch-page-header">
-        <Title level={2}>{t("tasks.title")}</Title>
-        <Text strong>{t("selection.count", { count: selectedTracks.length })}</Text>
+      <header className="batch-toolbar">
+        <div className="batch-toolbar-main">
+          <div className="batch-selection-pill">
+            <Text strong>{t("selection.count", { count: selectedTracks.length })}</Text>
+          </div>
+          <Select
+            className="batch-operation-select"
+            value={operation}
+            onChange={(value) => changeOperation(value as BatchOperation)}
+            options={operationGroups.map((group) => ({
+              label: group.label,
+              options: group.keys.map((key) => ({ value: key, label: t(`tasks.operations.${key}`) })),
+            }))}
+          />
+          <div className="batch-actions" ref={actionSlot.ref} />
+        </div>
+        <div className="batch-config" ref={configSlot.ref} />
       </header>
 
-      <div className="batch-action-bar" role="toolbar" aria-label={t("tasks.chooseOperation")}>
-        {operations.map((key) => {
-          const available = availableOperations.has(key);
-          const button = (
-            <Button
-              key={key}
-              type={operation === key ? "primary" : "text"}
-              icon={operationIcons[key]}
-              disabled={!available}
-              onClick={() => changeOperation(key)}
-            >
-              {t(`tasks.operations.${key}`)}
-            </Button>
-          );
-          return available ? button : <Tooltip key={key} title={t("tasks.unavailable")}>{button}</Tooltip>;
-        })}
-      </div>
-
+      <section className="batch-panel-wrap" ref={panelWrapRef}>
       {operation === "metadata" ? (
         <MetadataMatchPanel
+          actionSlot={actionSlot.element}
+          configSlot={configSlot.element}
+          tableHeight={tableHeight}
           tracks={selectedTracks}
           plugins={plugins}
           task={activeMetadataTask}
@@ -447,6 +468,9 @@ export function TasksPage({ tracks, plugins, selectedPaths, settings, artistSepa
         />
       ) : operation === "edit" ? (
         <EditTagsPanel
+          actionSlot={actionSlot.element}
+          configSlot={configSlot.element}
+          tableHeight={tableHeight}
           tracks={selectedTracks}
           task={activeEditTask}
           submitting={submitting}
@@ -455,6 +479,9 @@ export function TasksPage({ tracks, plugins, selectedPaths, settings, artistSepa
         />
       ) : operation === "rename" ? (
         <RenameFilesPanel
+          actionSlot={actionSlot.element}
+          configSlot={configSlot.element}
+          tableHeight={tableHeight}
           tracks={selectedTracks}
           task={activeRenameTask}
           submitting={submitting}
@@ -465,6 +492,9 @@ export function TasksPage({ tracks, plugins, selectedPaths, settings, artistSepa
         />
       ) : operation === "lyrics" ? (
         <LyricsFormatPanel
+          actionSlot={actionSlot.element}
+          configSlot={configSlot.element}
+          tableHeight={tableHeight}
           tracks={selectedTracks}
           task={activeLyricsTask}
           submitting={submitting}
@@ -474,6 +504,9 @@ export function TasksPage({ tracks, plugins, selectedPaths, settings, artistSepa
       ) : operation === "exportLyrics" ? (
         <ExportPanel
           exportType="exportLyrics"
+          actionSlot={actionSlot.element}
+          configSlot={configSlot.element}
+          tableHeight={tableHeight}
           tracks={selectedTracks}
           task={activeExportLyricsTask}
           submitting={submitting}
@@ -483,6 +516,9 @@ export function TasksPage({ tracks, plugins, selectedPaths, settings, artistSepa
       ) : operation === "exportCover" ? (
         <ExportPanel
           exportType="exportCover"
+          actionSlot={actionSlot.element}
+          configSlot={configSlot.element}
+          tableHeight={tableHeight}
           tracks={selectedTracks}
           task={activeExportCoverTask}
           submitting={submitting}
@@ -491,6 +527,8 @@ export function TasksPage({ tracks, plugins, selectedPaths, settings, artistSepa
         />
       ) : (
         <ReplayGainTagsPanel
+          actionSlot={actionSlot.element}
+          tableHeight={tableHeight}
           tracks={selectedTracks}
           task={activeReplayGainTask}
           submitting={submitting}
@@ -498,11 +536,12 @@ export function TasksPage({ tracks, plugins, selectedPaths, settings, artistSepa
           onCancel={cancelReplayGain}
         />
       )}
+      </section>
     </div>
   );
-}
+});
 
-function MetadataMatchPanel({ tracks, plugins, task, submitting, onRun, onCancel }: { tracks: AudioTrack[]; plugins: SourcePlugin[]; task?: BatchTask; submitting: boolean; onRun: (config: MetadataMatchConfig) => void; onCancel: () => void }) {
+function MetadataMatchPanel({ actionSlot, configSlot, tableHeight, tracks, plugins, task, submitting, onRun, onCancel }: { actionSlot: HTMLElement | null; configSlot: HTMLElement | null; tableHeight: number; tracks: AudioTrack[]; plugins: SourcePlugin[]; task?: BatchTask; submitting: boolean; onRun: (config: MetadataMatchConfig) => void; onCancel: () => void }) {
   const { t } = useTranslation();
   const availableSources = useMemo(() => plugins.filter((plugin) => plugin.enabled && plugin.capabilities.includes("searchSongs")), [plugins]);
   const [enabledSources, setEnabledSources] = useState<string[]>(availableSources.map((plugin) => plugin.id));
@@ -549,7 +588,8 @@ function MetadataMatchPanel({ tracks, plugins, task, submitting, onRun, onCancel
 
   return (
     <section className="batch-panel">
-      <div className="batch-panel-toolbar">
+      {configSlot ? createPortal(
+        <div className="batch-panel-toolbar">
         <Checkbox.Group value={enabledSources} onChange={(values) => setEnabledSources(values.map(String))}>
           <Space wrap>
             {availableSources.map((source) => (
@@ -567,7 +607,9 @@ function MetadataMatchPanel({ tracks, plugins, task, submitting, onRun, onCancel
           <Select value={concurrency} onChange={setConcurrency} style={{ width: 130 }} options={[1, 2, 3, 4, 5].map((value) => ({ value, label: t("tasks.concurrency", { count: value }) }))} />
           <Button onClick={() => setSettingsOpen(true)}>{t("tasks.matchFields")}</Button>
         </Space>
-      </div>
+      </div>,
+        configSlot,
+      ) : null}
       <Table
         className="batch-table"
         rowKey="path"
@@ -575,24 +617,27 @@ function MetadataMatchPanel({ tracks, plugins, task, submitting, onRun, onCancel
         dataSource={tracks}
         size="middle"
         pagination={false}
-        scroll={{ x: 720 }}
+        scroll={{ x: 720, y: tableHeight }}
       />
-      <footer className="batch-panel-footer">
-        {task && <BatchTaskProgress task={task} />}
-        {isActiveTask(task) ? (
-          <Button danger onClick={onCancel}>{t("common.cancel")}</Button>
-        ) : (
-          <Button
-            type="primary"
-            icon={<TagsOutlined />}
-            loading={submitting}
-            disabled={tracks.length === 0 || enabledSources.length === 0 || Object.values(targetModes).every((mode) => mode === "disabled")}
-            onClick={() => onRun({ targetModes, enabledSourceOrderIds: enabledSources, preferFileName, concurrency })}
-          >
-            {t("tasks.startMetadataMatch")}
-          </Button>
-        )}
-      </footer>
+      {actionSlot ? createPortal(
+        <footer className="batch-actions-footer">
+          {task && <BatchTaskProgress task={task} />}
+          {isActiveTask(task) ? (
+            <Button danger onClick={onCancel}>{t("common.cancel")}</Button>
+          ) : (
+            <Button
+              type="primary"
+              icon={<TagsOutlined />}
+              loading={submitting}
+              disabled={tracks.length === 0 || enabledSources.length === 0 || Object.values(targetModes).every((mode) => mode === "disabled")}
+              onClick={() => onRun({ targetModes, enabledSourceOrderIds: enabledSources, preferFileName, concurrency })}
+            >
+              {t("tasks.startMetadataMatch")}
+            </Button>
+          )}
+        </footer>,
+        actionSlot,
+      ) : null}
       <Modal title={t("tasks.matchFields")} open={settingsOpen} onCancel={() => setSettingsOpen(false)} onOk={() => setSettingsOpen(false)} destroyOnHidden>
         <Table
           rowKey="key"
@@ -625,7 +670,7 @@ function MetadataMatchPanel({ tracks, plugins, task, submitting, onRun, onCancel
   );
 }
 
-function EditTagsPanel({ tracks, task, submitting, onRun, onCancel }: { tracks: AudioTrack[]; task?: BatchTask; submitting: boolean; onRun: (config: BatchEditConfig) => void; onCancel: () => void }) {
+function EditTagsPanel({ actionSlot, configSlot, tableHeight, tracks, task, submitting, onRun, onCancel }: { actionSlot: HTMLElement | null; configSlot: HTMLElement | null; tableHeight: number; tracks: AudioTrack[]; task?: BatchTask; submitting: boolean; onRun: (config: BatchEditConfig) => void; onCancel: () => void }) {
   const { t } = useTranslation();
   const { message } = App.useApp();
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -713,22 +758,28 @@ function EditTagsPanel({ tracks, task, submitting, onRun, onCancel }: { tracks: 
 
   return (
     <section className="batch-panel">
-      <div className="batch-panel-toolbar">
+      {configSlot ? createPortal(
+        <div className="batch-panel-toolbar">
         <Space wrap>
           <Button onClick={() => setSettingsOpen(true)}>{t("tasks.editFields")}</Button>
           <Select value={concurrency} onChange={setConcurrency} style={{ width: 130 }} options={[1, 2, 3, 4, 5].map((value) => ({ value, label: t("tasks.concurrency", { count: value }) }))} />
           <Tag color={hasOperation ? "processing" : "default"}>{t("tasks.changeCount", { count: enabledFields.length + Number(ratingModified) + Number(Boolean(coverPath) || removeCover) + Number(lyricsOffsetMs !== 0) })}</Tag>
         </Space>
-      </div>
-      <Table className="batch-table" rowKey="path" columns={columns} dataSource={tracks} size="middle" pagination={false} scroll={{ x: 900 }} />
-      <footer className="batch-panel-footer">
-        {task && <BatchTaskProgress task={task} />}
-        {isActiveTask(task) ? (
-          <Button danger onClick={onCancel}>{t("common.cancel")}</Button>
-        ) : (
-          <Button type="primary" icon={<EditOutlined />} loading={submitting} disabled={tracks.length === 0 || !hasOperation} onClick={run}>{t("tasks.startEditTags")}</Button>
-        )}
-      </footer>
+      </div>,
+        configSlot,
+      ) : null}
+      <Table className="batch-table" rowKey="path" columns={columns} dataSource={tracks} size="middle" pagination={false} scroll={{ x: 900, y: tableHeight }} />
+      {actionSlot ? createPortal(
+        <footer className="batch-actions-footer">
+          {task && <BatchTaskProgress task={task} />}
+          {isActiveTask(task) ? (
+            <Button danger onClick={onCancel}>{t("common.cancel")}</Button>
+          ) : (
+            <Button type="primary" icon={<EditOutlined />} loading={submitting} disabled={tracks.length === 0 || !hasOperation} onClick={run}>{t("tasks.startEditTags")}</Button>
+          )}
+        </footer>,
+        actionSlot,
+      ) : null}
       <Modal title={t("tasks.editFields")} open={settingsOpen} width={760} onCancel={() => setSettingsOpen(false)} onOk={() => setSettingsOpen(false)} destroyOnHidden>
         <Space orientation="vertical" size={12} className="full-width batch-edit-fields">
           <Text type="secondary">{t("tasks.editEmptyHint")}</Text>
@@ -791,7 +842,7 @@ function defaultRenameRules(characterMappings: Record<string, string>): Characte
   }];
 }
 
-function RenameFilesPanel({ tracks, task, submitting, onRun, onCancel, characterMappings, onChangeCharacterMappings }: { tracks: AudioTrack[]; task?: BatchTask; submitting: boolean; onRun: (config: RenameFilesConfig) => void; onCancel: () => void; characterMappings: Record<string, string>; onChangeCharacterMappings: (mappings: Record<string, string>) => void }) {
+function RenameFilesPanel({ actionSlot, configSlot, tableHeight, tracks, task, submitting, onRun, onCancel, characterMappings, onChangeCharacterMappings }: { actionSlot: HTMLElement | null; configSlot: HTMLElement | null; tableHeight: number; tracks: AudioTrack[]; task?: BatchTask; submitting: boolean; onRun: (config: RenameFilesConfig) => void; onCancel: () => void; characterMappings: Record<string, string>; onChangeCharacterMappings: (mappings: Record<string, string>) => void }) {
   const { t } = useTranslation();
   const [renameFormat, setRenameFormat] = useState("@1 - @2");
   const rules = useMemo(() => defaultRenameRules(characterMappings), [characterMappings]);
@@ -872,7 +923,8 @@ function RenameFilesPanel({ tracks, task, submitting, onRun, onCancel, character
 
   return (
     <section className="batch-panel">
-      <div className="batch-panel-toolbar rename-toolbar">
+      {configSlot ? createPortal(
+        <div className="batch-panel-toolbar rename-toolbar">
         <div className="rename-format-row">
           <Select
             value={renamePresets.includes(renameFormat) ? renameFormat : undefined}
@@ -890,16 +942,21 @@ function RenameFilesPanel({ tracks, task, submitting, onRun, onCancel, character
           {previewLoading ? <Text type="secondary">{t("tasks.generatingPreview")}</Text> : null}
           {previewError ? <Text type="danger">{previewError}</Text> : null}
         </Space>
-      </div>
-      <Table className="batch-table" rowKey="originalPath" columns={columns} dataSource={previews} loading={previewLoading} size="middle" pagination={previews.length > 12 ? { pageSize: 12, showSizeChanger: false } : false} scroll={{ x: 760 }} />
-      <footer className="batch-panel-footer">
-        {task && <BatchTaskProgress task={task} />}
-        {taskIsActive ? (
-          <Button danger onClick={onCancel}>{t("common.cancel")}</Button>
-        ) : (
-          <Button type="primary" icon={<FormOutlined />} loading={submitting} disabled={!canRun} onClick={run}>{t("tasks.startRename")}</Button>
-        )}
-      </footer>
+      </div>,
+        configSlot,
+      ) : null}
+      <Table className="batch-table" rowKey="originalPath" columns={columns} dataSource={previews} loading={previewLoading} size="middle" pagination={previews.length > 12 ? { pageSize: 12, showSizeChanger: false } : false} scroll={{ x: 760, y: tableHeight }} />
+      {actionSlot ? createPortal(
+        <footer className="batch-actions-footer">
+          {task && <BatchTaskProgress task={task} />}
+          {taskIsActive ? (
+            <Button danger onClick={onCancel}>{t("common.cancel")}</Button>
+          ) : (
+            <Button type="primary" icon={<FormOutlined />} loading={submitting} disabled={!canRun} onClick={run}>{t("tasks.startRename")}</Button>
+          )}
+        </footer>,
+        actionSlot,
+      ) : null}
       <Modal title={t("tasks.characterMappings")} open={settingsOpen} onCancel={() => setSettingsOpen(false)} onOk={() => setSettingsOpen(false)} destroyOnHidden>
         <Space orientation="vertical" size={12} className="full-width">
           <Text type="secondary">{t("tasks.characterMappingsHint")}</Text>
@@ -930,7 +987,7 @@ function sameFilePath(left: string, right: string) {
   return left.localeCompare(right, undefined, { sensitivity: "accent" }) === 0;
 }
 
-function LyricsFormatPanel({ tracks, task, submitting, onRun, onCancel }: { tracks: AudioTrack[]; task?: BatchTask; submitting: boolean; onRun: (config: LyricsFormatConfig) => void; onCancel: () => void }) {
+function LyricsFormatPanel({ actionSlot, configSlot, tableHeight, tracks, task, submitting, onRun, onCancel }: { actionSlot: HTMLElement | null; configSlot: HTMLElement | null; tableHeight: number; tracks: AudioTrack[]; task?: BatchTask; submitting: boolean; onRun: (config: LyricsFormatConfig) => void; onCancel: () => void }) {
   const { t } = useTranslation();
   const [targetFormat, setTargetFormat] = useState<LyricFormat>();
   const [formatLineOrder, setFormatLineOrder] = useState(true);
@@ -961,7 +1018,8 @@ function LyricsFormatPanel({ tracks, task, submitting, onRun, onCancel }: { trac
 
   return (
     <section className="batch-panel">
-      <div className="batch-panel-toolbar">
+      {configSlot ? createPortal(
+        <div className="batch-panel-toolbar">
         <Space wrap>
           <Select
             value={targetFormat ?? "keep"}
@@ -976,29 +1034,37 @@ function LyricsFormatPanel({ tracks, task, submitting, onRun, onCancel }: { trac
           <Checkbox checked={removeTagLines} onChange={(event) => setRemoveTagLines(event.target.checked)}>{t("tasks.removeTagLines")}</Checkbox>
           <Checkbox checked={removeEmptyLines} onChange={(event) => setRemoveEmptyLines(event.target.checked)}>{t("lyrics.removeEmpty")}</Checkbox>
         </Space>
-      </div>
-      <Table className="batch-table" rowKey="path" columns={columns} dataSource={tracks} size="middle" pagination={false} scroll={{ x: 720 }} />
-      <footer className="batch-panel-footer">
-        {task && <BatchTaskProgress task={task} />}
-        {isActiveTask(task) ? (
-          <Button danger onClick={onCancel}>{t("common.cancel")}</Button>
-        ) : (
-          <Button
-            type="primary"
-            icon={<FileTextOutlined />}
-            loading={submitting}
-            disabled={tracks.length === 0 || !hasOperation}
-            onClick={() => onRun({ targetFormat, formatLineOrder, removeTagLines, removeEmptyLines })}
-          >
-            {t("tasks.startLyricsFormat")}
-          </Button>
-        )}
-      </footer>
+      </div>,
+        configSlot,
+      ) : null}
+      <Table className="batch-table" rowKey="path" columns={columns} dataSource={tracks} size="middle" pagination={false} scroll={{ x: 720, y: tableHeight }} />
+      {actionSlot ? createPortal(
+        <footer className="batch-actions-footer">
+          {task && <BatchTaskProgress task={task} />}
+          {isActiveTask(task) ? (
+            <Button danger onClick={onCancel}>{t("common.cancel")}</Button>
+          ) : (
+            <Button
+              type="primary"
+              icon={<FileTextOutlined />}
+              loading={submitting}
+              disabled={tracks.length === 0 || !hasOperation}
+              onClick={() => onRun({ targetFormat, formatLineOrder, removeTagLines, removeEmptyLines })}
+            >
+              {t("tasks.startLyricsFormat")}
+            </Button>
+          )}
+        </footer>,
+        actionSlot,
+      ) : null}
     </section>
   );
 }
 
-function ExportPanel({ exportType, tracks, task, submitting, onRun, onCancel }: {
+function ExportPanel({ actionSlot, configSlot, tableHeight, exportType, tracks, task, submitting, onRun, onCancel }: {
+  actionSlot: HTMLElement | null;
+  configSlot: HTMLElement | null;
+  tableHeight: number;
   exportType: "exportLyrics" | "exportCover";
   tracks: AudioTrack[];
   task?: BatchTask;
@@ -1052,7 +1118,8 @@ function ExportPanel({ exportType, tracks, task, submitting, onRun, onCancel }: 
 
   return (
     <section className="batch-panel">
-      <div className="batch-panel-toolbar">
+      {configSlot ? createPortal(
+        <div className="batch-panel-toolbar">
         <Space orientation="vertical" size={8} className="full-width">
           <Space.Compact className="full-width">
             <Input value={destinationDirectory} readOnly placeholder={t("tasks.exportDestinationPlaceholder")} />
@@ -1068,29 +1135,34 @@ function ExportPanel({ exportType, tracks, task, submitting, onRun, onCancel }: 
             <Text type="secondary">{t("tasks.exportConflictHint")}</Text>
           </Space>
         </Space>
-      </div>
-      <Table className="batch-table" rowKey="path" columns={columns} dataSource={tracks} size="middle" pagination={false} scroll={{ x: 760 }} />
-      <footer className="batch-panel-footer">
-        {task && <BatchTaskProgress task={task} />}
-        {isActiveTask(task) ? (
-          <Button danger onClick={onCancel}>{t("common.cancel")}</Button>
-        ) : (
-          <Button
-            type="primary"
-            icon={<ExportOutlined />}
-            loading={submitting}
-            disabled={tracks.length === 0 || !destinationDirectory}
-            onClick={() => onRun(destinationDirectory, concurrency)}
-          >
-            {t(exportsLyrics ? "tasks.startExportLyrics" : "tasks.startExportCover")}
-          </Button>
-        )}
-      </footer>
+      </div>,
+        configSlot,
+      ) : null}
+      <Table className="batch-table" rowKey="path" columns={columns} dataSource={tracks} size="middle" pagination={false} scroll={{ x: 760, y: tableHeight }} />
+      {actionSlot ? createPortal(
+        <footer className="batch-actions-footer">
+          {task && <BatchTaskProgress task={task} />}
+          {isActiveTask(task) ? (
+            <Button danger onClick={onCancel}>{t("common.cancel")}</Button>
+          ) : (
+            <Button
+              type="primary"
+              icon={<ExportOutlined />}
+              loading={submitting}
+              disabled={tracks.length === 0 || !destinationDirectory}
+              onClick={() => onRun(destinationDirectory, concurrency)}
+            >
+              {t(exportsLyrics ? "tasks.startExportLyrics" : "tasks.startExportCover")}
+            </Button>
+          )}
+        </footer>,
+        actionSlot,
+      ) : null}
     </section>
   );
 }
 
-function ReplayGainTagsPanel({ tracks, task, submitting, onRun, onCancel }: { tracks: AudioTrack[]; task?: BatchTask; submitting: boolean; onRun: () => void; onCancel: () => void }) {
+function ReplayGainTagsPanel({ actionSlot, tableHeight, tracks, task, submitting, onRun, onCancel }: { actionSlot: HTMLElement | null; tableHeight: number; tracks: AudioTrack[]; task?: BatchTask; submitting: boolean; onRun: () => void; onCancel: () => void }) {
   const { t } = useTranslation();
   const rows: GainRow[] = useMemo(() => tracks.map((track) => {
     const hasReplayGain = Boolean(
@@ -1136,16 +1208,19 @@ function ReplayGainTagsPanel({ tracks, task, submitting, onRun, onCancel }: { tr
         dataSource={rows}
         size="middle"
         pagination={false}
-        scroll={{ x: 920 }}
+        scroll={{ x: 920, y: tableHeight }}
       />
-      <footer className="batch-panel-footer">
-        {task && <BatchTaskProgress task={task} />}
-        {taskIsActive ? (
-          <Button danger onClick={onCancel}>{t("common.cancel")}</Button>
-        ) : (
-          <Button type="primary" icon={<CalculatorOutlined />} loading={submitting} disabled={tracks.length === 0} onClick={onRun}>{t("tasks.startReplayGain")}</Button>
-        )}
-      </footer>
+      {actionSlot ? createPortal(
+        <footer className="batch-actions-footer">
+          {task && <BatchTaskProgress task={task} />}
+          {taskIsActive ? (
+            <Button danger onClick={onCancel}>{t("common.cancel")}</Button>
+          ) : (
+            <Button type="primary" icon={<CalculatorOutlined />} loading={submitting} disabled={tracks.length === 0} onClick={onRun}>{t("tasks.startReplayGain")}</Button>
+          )}
+        </footer>,
+        actionSlot,
+      ) : null}
     </section>
   );
 }

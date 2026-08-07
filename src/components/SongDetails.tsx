@@ -2,7 +2,7 @@ import { ReloadOutlined, SaveOutlined, SearchOutlined } from "@ant-design/icons"
 import { Alert, Avatar, Button, Checkbox, Collapse, Descriptions, Drawer, Empty, Flex, Form, Input, InputNumber, List, Modal, Progress, Rate, Segmented, Select, Space, Spin, Tabs, Typography } from "antd";
 import type { FormInstance } from "antd";
 import type { TFunction } from "i18next";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { AudioTrack, DesktopSettings, PluginSongResult, ReplayGainProgress, SourcePlugin, TagForm } from "../app/types";
 import { fetchRemoteImage, invokeSourcePlugin } from "../backend/audioApi";
@@ -15,7 +15,7 @@ import { useReplayGainProgress } from "../hooks/useReplayGainProgress";
 
 const { Text } = Typography;
 
-export function SongDetails({
+export const SongDetails = memo(function SongDetails({
   open,
   loading,
   track,
@@ -77,7 +77,7 @@ export function SongDetails({
       placement="right"
       size={720}
       open={open}
-      forceRender
+      destroyOnHidden
       onClose={onClose}
       extra={
         <Space>
@@ -128,7 +128,7 @@ export function SongDetails({
       )}
     </Drawer>
   );
-}
+});
 
 function FileInformation({ track }: { track: AudioTrack }) {
   const { t } = useTranslation();

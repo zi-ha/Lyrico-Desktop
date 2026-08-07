@@ -7,6 +7,13 @@
     "library": "Library",
     "metadata": "Metadata",
     "integrations": "Sources",
+    "sources": "Plugin sources",
+    "folders": "Folders",
+    "groups": {
+      "general": "General",
+      "content": "Online",
+      "library": "Library"
+    },
     "about": "About",
     "language": "Language",
     "languageHint": "System follows the Windows display language and falls back to English.",
@@ -16,7 +23,7 @@
     "interface": "Interface",
     "startup": "Startup behavior",
     "startupTitle": "Database-first startup",
-    "startupDescription": "Lyrico loads lightweight song summaries from SQLite. Audio files are scanned only when you add or explicitly rescan a folder.",
+    "startupDescription": "Lyrico scans the configured library folders once at startup; unchanged files are reused from the database index for faster scanning.",
     "manageFolders": "Manage folders",
     "librarySummary": "Library summary",
     "persistence": "Persistence",

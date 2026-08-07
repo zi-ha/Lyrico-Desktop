@@ -1,6 +1,12 @@
 {
   "tasks": {
     "title": "Batch processing",
+    "description": "Run batch operations on the selected songs.",
+    "groups": {
+      "tags": "Tag tools",
+      "content": "Content tools",
+      "analysis": "Audio analysis"
+    },
     "chooseOperation": "Operation",
     "noSelection": "No songs selected",
     "unavailable": "This operation is not connected yet",

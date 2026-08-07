@@ -1,6 +1,5 @@
 export type ViewKey =
   | "library"
-  | "folders"
   | "tools"
   | "settings";
 

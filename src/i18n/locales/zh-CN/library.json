@@ -14,12 +14,7 @@
     "selectArtists": "选择艺术家",
     "exit": "退出多选",
     "count": "已选择 {{count}} 首歌曲",
-    "batch": "批量处理",
-    "showSelected": "查看已选择歌曲",
-    "selectedSongs": "已选歌曲",
-    "drawerTitle": "已选歌曲（{{count}}）",
-    "clear": "清空选择",
-    "empty": "尚未选择歌曲"
+    "batch": "批量处理"
   },
   "songs": {
     "title": "歌曲",
@@ -56,7 +51,7 @@
   },
   "folders": {
     "title": "文件夹",
-    "description": "管理音乐库根目录并浏览各文件夹中的歌曲。",
+    "description": "管理音乐库根目录及扫描状态。",
     "add": "添加文件夹",
     "configured": "已配置 {{count}} 个",
     "libraryRoots": "音乐库文件夹",
@@ -66,6 +61,7 @@
     "rescan": "重新扫描文件夹",
     "rescanRoot": "扫描根目录",
     "remove": "从音乐库移除",
+    "removeConfirm": "确定从音乐库移除该文件夹？",
     "removeRoot": "移除根目录",
     "empty": "添加一个或多个音乐文件夹以建立音乐库。",
     "tracksTitle": "文件夹歌曲",

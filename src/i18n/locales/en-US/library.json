@@ -15,12 +15,7 @@
     "exit": "Exit selection",
     "count_one": "1 song selected",
     "count_other": "{{count}} songs selected",
-    "batch": "Batch process",
-    "showSelected": "Show selected songs",
-    "selectedSongs": "Selected songs",
-    "drawerTitle": "Selected songs ({{count}})",
-    "clear": "Clear selection",
-    "empty": "No songs selected"
+    "batch": "Batch process"
   },
   "songs": {
     "title": "Songs",
@@ -57,7 +52,7 @@
   },
   "folders": {
     "title": "Folders",
-    "description": "Manage library roots and browse the songs stored in each folder.",
+    "description": "Manage library roots and their scan status.",
     "add": "Add folders",
     "configured": "{{count}} configured",
     "libraryRoots": "Library folders",
@@ -67,6 +62,7 @@
     "rescan": "Rescan folder",
     "rescanRoot": "Rescan root",
     "remove": "Remove from library",
+    "removeConfirm": "Remove this folder from the library?",
     "removeRoot": "Remove root",
     "empty": "Add one or more music folders to build your library.",
     "tracksTitle": "Folder songs",

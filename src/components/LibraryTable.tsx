@@ -1,5 +1,6 @@
 import { CheckSquareOutlined, CloudSyncOutlined, CloseOutlined } from "@ant-design/icons";
 import { Button, Flex, Space, Table, Tag, Tooltip, Typography } from "antd";
+import { memo } from "react";
 import { useTranslation } from "react-i18next";
 import type { AudioTrack } from "../app/types";
 import { formatDuration } from "../utils/format";
@@ -8,7 +9,7 @@ import { useResizableColumns, type BoundedColumn } from "../hooks/useResizableCo
 
 const { Text } = Typography;
 
-export function LibraryTable({
+export const LibraryTable = memo(function LibraryTable({
   tracks,
   loading,
   selectedPath,
@@ -138,7 +139,12 @@ export function LibraryTable({
       dataSource={tracks}
       size="middle"
       tableLayout="fixed"
-      pagination={false}
+      pagination={{
+        pageSize: 100,
+        showSizeChanger: true,
+        pageSizeOptions: [50, 100, 200, 500],
+        showTotal: (total, range) => t("table.range", { start: range[0], end: range[1], total }),
+      }}
       scroll={{ x: 520 }}
       rowSelection={rowSelection}
       rowClassName={(track) => (track.path === selectedPath ? "row-focused" : "")}
@@ -164,4 +170,4 @@ export function LibraryTable({
     />
     </div>
   );
-}
+});

@@ -32,17 +32,7 @@
     "system": "系统",
     "primary": "主导航",
     "tagline": "本地音乐标签管理",
-    "librarySummary": "{{tracks}} 首歌曲 · {{folders}} 个文件夹",
-    "expand": "展开侧栏",
-    "collapse": "收起侧栏"
-  },
-  "contextMenu": {
-    "undo": "撤销",
-    "redo": "重做",
-    "cut": "剪切",
-    "copy": "复制",
-    "paste": "粘贴",
-    "selectAll": "全选"
+    "librarySummary": "{{tracks}} 首歌曲 · {{folders}} 个文件夹"
   },
   "search": {
     "placeholder": "搜索{{scope}}…",

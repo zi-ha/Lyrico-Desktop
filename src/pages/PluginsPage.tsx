@@ -19,7 +19,7 @@ import {
   Tabs,
   Typography,
 } from "antd";
-import { useEffect, useMemo, useState } from "react";
+import { memo, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import ReactMarkdown from "react-markdown";
 import type { PluginConfigField, SourcePlugin } from "../app/types";
@@ -35,7 +35,7 @@ type PluginsPageProps = {
   onUninstall: (pluginId: string) => Promise<void>;
 };
 
-export function PluginsPage({ plugins, onInstall, onChangeEnabled, onSaveConfig, onUninstall }: PluginsPageProps) {
+export const PluginsPage = memo(function PluginsPage({ plugins, onInstall, onChangeEnabled, onSaveConfig, onUninstall }: PluginsPageProps) {
   const { t } = useTranslation();
   const [selectedPluginId, setSelectedPluginId] = useState<string>();
   const [config, setConfig] = useState<Record<string, string>>({});
@@ -195,7 +195,7 @@ export function PluginsPage({ plugins, onInstall, onChangeEnabled, onSaveConfig,
       </Row>
     </div>
   );
-}
+});
 
 function PluginIcon({ plugin }: { plugin: SourcePlugin }) {
   return <Avatar shape="square" size={36} src={plugin.iconDataUrl} icon={<ApiOutlined />} />;

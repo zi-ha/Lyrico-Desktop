@@ -37,17 +37,7 @@
     "system": "SYSTEM",
     "primary": "Primary navigation",
     "tagline": "Local music tag manager",
-    "librarySummary": "{{tracks}} songs · {{folders}} folders",
-    "expand": "Expand sidebar",
-    "collapse": "Collapse sidebar"
-  },
-  "contextMenu": {
-    "undo": "Undo",
-    "redo": "Redo",
-    "cut": "Cut",
-    "copy": "Copy",
-    "paste": "Paste",
-    "selectAll": "Select all"
+    "librarySummary": "{{tracks}} songs · {{folders}} folders"
   },
   "search": {
     "placeholder": "Search {{scope}}...",

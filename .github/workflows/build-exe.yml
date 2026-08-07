@@ -1,0 +1,55 @@
+name: Build Windows Portable EXE
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [master, main]
+    tags: ["v*"]
+
+jobs:
+  build-windows:
+    name: Build portable EXE
+    runs-on: windows-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build Tauri app (portable release binary)
+        run: npm run tauri -- build --no-bundle
+
+      - name: Prepare portable executable
+        run: Copy-Item src-tauri/target/release/Lyrico.exe Lyrico-windows-portable.exe
+
+      - name: Upload portable EXE artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: lyrico-windows-portable
+          path: Lyrico-windows-portable.exe
+          if-no-files-found: error
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: Lyrico-windows-portable.exe
+          generate_release_notes: true
