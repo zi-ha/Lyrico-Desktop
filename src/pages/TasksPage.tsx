@@ -553,8 +553,11 @@ function MetadataMatchPanel({ actionSlot, configSlot, tableHeight, tracks, plugi
   useEffect(() => {
     const sourceIds = availableSources.map((plugin) => plugin.id);
     setEnabledSources((current) => {
+      // 保留用户勾选，但顺序跟随设置中的插件源顺序
       const retained = current.filter((id) => sourceIds.includes(id));
-      return retained.length > 0 || sourceIds.length === 0 ? retained : sourceIds;
+      const retainedSet = new Set(retained);
+      const ordered = sourceIds.filter((id) => retainedSet.has(id));
+      return ordered.length > 0 || sourceIds.length === 0 ? ordered : sourceIds;
     });
   }, [availableSources]);
 

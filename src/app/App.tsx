@@ -119,6 +119,7 @@ function LyricoDesktop() {
             onSelectTrack={selection.selectTrack}
             onChangeSelectedPaths={selection.setSelectedPaths}
             onOpenDetails={editor.openTrackDetails}
+            onRefreshTrack={library.refreshTrack}
           />
         );
       case "tools":
@@ -146,6 +147,7 @@ function LyricoDesktop() {
             onChangeSettings={settings.changeDesktopSettings}
             onInstallPlugin={plugins.installPlugin}
             onChangePluginEnabled={plugins.changePluginEnabled}
+            onReorderPlugin={plugins.movePlugin}
             onSavePluginConfig={plugins.savePluginConfig}
             onUninstallPlugin={plugins.uninstallPlugin}
             onAddFolders={library.addFolders}

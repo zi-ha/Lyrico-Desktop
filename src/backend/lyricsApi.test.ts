@@ -7,6 +7,8 @@ describe("lyrics API boundary", () => {
     expect(preferredPluginLyricFormat({ rawTtml: "<tt />" })).toBe("ttml");
     expect(preferredPluginLyricFormat({ rawEnhancedLrc: "", rawPlainLrc: "[00:01]line" })).toBe("plainLrc");
     expect(preferredPluginLyricFormat(null)).toBeUndefined();
+    expect(preferredPluginLyricFormat([{ original: [[1000, 2000, "line"]] }])).toBe("verbatimLrc");
+    expect(preferredPluginLyricFormat([null, { rawPlainLrc: "[00:01]line" }])).toBe("plainLrc");
     expect(LYRIC_FORMATS).toEqual(["plainLrc", "verbatimLrc", "enhancedLrc", "ttml"]);
   });
 });

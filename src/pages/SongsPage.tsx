@@ -14,6 +14,7 @@ export const SongsPage = memo(function SongsPage({
   onSelectTrack,
   onChangeSelectedPaths,
   onOpenDetails,
+  onRefreshTrack,
 }: {
   tracks: AudioTrack[];
   selectedPath?: string;
@@ -21,6 +22,7 @@ export const SongsPage = memo(function SongsPage({
   onSelectTrack: (path?: string) => void;
   onChangeSelectedPaths: (paths: string[]) => void;
   onOpenDetails: (path?: string) => void;
+  onRefreshTrack: (path: string) => Promise<void>;
 }) {
   const { t } = useTranslation();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -144,8 +146,9 @@ export const SongsPage = memo(function SongsPage({
     e.preventDefault();
     e.stopPropagation();
     onSelectTrack(path);
-    onOpenDetails(path);
-  }, [onSelectTrack, onOpenDetails]);
+    // 右键默认重新读取一次文件，更新列表与数据库后再打开详情
+    void onRefreshTrack(path).then(() => onOpenDetails(path));
+  }, [onSelectTrack, onOpenDetails, onRefreshTrack]);
 
   const { start, end } = getVisibleRange();
   const totalHeight = tracks.length * itemHeight;

@@ -1,9 +1,10 @@
 {
   "sources": {
     "title": "Plugin Sources",
-    "description": "Install and configure API v3 plugins for metadata, lyrics and artwork.",
+    "description": "Install and configure plugins for metadata, lyrics and artwork.",
     "install": "Install plugin ZIP",
     "installed": "Installed plugins",
+    "orderHint": "Use the arrows to reorder — batch matching and online matching show plugins in this order.",
     "none": "No plugins installed",
     "configuration": "Configuration",
     "noConfiguration": "This plugin has no configurable fields",

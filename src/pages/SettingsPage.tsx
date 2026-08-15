@@ -25,6 +25,7 @@ export const SettingsPage = memo(function SettingsPage({
   onChangeSettings,
   onInstallPlugin,
   onChangePluginEnabled,
+  onReorderPlugin,
   onSavePluginConfig,
   onUninstallPlugin,
   onAddFolders,
@@ -42,6 +43,7 @@ export const SettingsPage = memo(function SettingsPage({
   onChangeSettings: (settings: DesktopSettings) => void;
   onInstallPlugin: () => Promise<void>;
   onChangePluginEnabled: (pluginId: string, enabled: boolean) => Promise<void>;
+  onReorderPlugin: (pluginId: string, offset: -1 | 1) => Promise<void>;
   onSavePluginConfig: (pluginId: string, config: Record<string, string>) => Promise<void>;
   onUninstallPlugin: (pluginId: string) => Promise<void>;
   onAddFolders: () => void;
@@ -148,6 +150,7 @@ export const SettingsPage = memo(function SettingsPage({
               plugins={plugins}
               onInstall={onInstallPlugin}
               onChangeEnabled={onChangePluginEnabled}
+              onReorder={onReorderPlugin}
               onSaveConfig={onSavePluginConfig}
               onUninstall={onUninstallPlugin}
             />

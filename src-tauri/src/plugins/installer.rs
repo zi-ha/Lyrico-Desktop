@@ -1,7 +1,4 @@
-use super::manifest::{
-    PluginInstallFailure, PluginInstallResult, PluginManifest, SourcePlugin, HOST_API_VERSION,
-    PLUGIN_API_VERSION,
-};
+use super::manifest::{PluginInstallFailure, PluginInstallResult, PluginManifest, SourcePlugin};
 use crate::database::{Database, PluginRecord};
 use serde_json::{Map, Value};
 use std::collections::{HashMap, HashSet};
@@ -108,6 +105,22 @@ pub(crate) async fn set_enabled(
         return Err("Installed plugin directory is missing".to_string());
     }
     database.set_plugin_enabled(plugin_id, enabled).await?;
+    load_plugins(database, plugins_root).await
+}
+
+pub(crate) async fn reorder_plugins(
+    database: &Database,
+    plugins_root: &Path,
+    plugin_ids: &[String],
+) -> Result<Vec<SourcePlugin>, String> {
+    let mut seen = HashSet::new();
+    for plugin_id in plugin_ids {
+        validate_plugin_id(plugin_id)?;
+        if !seen.insert(plugin_id.as_str()) {
+            return Err(format!("Duplicate plugin id in order: {plugin_id}"));
+        }
+    }
+    database.set_plugin_order(plugin_ids).await?;
     load_plugins(database, plugins_root).await
 }
 
@@ -319,18 +332,8 @@ fn validate_manifest(manifest: &PluginManifest) -> Result<(), String> {
     if manifest.version_code < 1 {
         return Err("Plugin versionCode must be >= 1".to_string());
     }
-    if manifest.api_version != PLUGIN_API_VERSION {
-        return Err(format!(
-            "Unsupported plugin apiVersion: {}",
-            manifest.api_version
-        ));
-    }
-    if manifest.min_host_api_version > HOST_API_VERSION {
-        return Err(format!(
-            "Plugin requires host API {}",
-            manifest.min_host_api_version
-        ));
-    }
+    // API 版本号不做强制校验：不拒绝任何 apiVersion / minHostApiVersion，
+    // 运行时对不支持的 host API 调用会单独报错，安装不应被版本号卡住。
     if !manifest.capabilities.is_empty()
         && !manifest
             .capabilities
@@ -603,5 +606,70 @@ mod tests {
         assert!(validate_plugin_id("netease").is_err());
         assert!(validate_plugin_id("com.lonx.bad-id").is_err());
         assert!(validate_plugin_id("1com.lonx.plugin").is_err());
+    }
+
+    #[test]
+    fn ignores_api_version_mismatches_during_install() {
+        let manifest = PluginManifest {
+            id: "com.example.legacy".to_string(),
+            name: "Legacy".to_string(),
+            version_code: 1,
+            version_name: "1.0.0".to_string(),
+            author: String::new(),
+            description: String::new(),
+            api_version: 99,
+            min_host_api_version: 99,
+            entry: "source.js".to_string(),
+            include_dirs: Vec::new(),
+            icon: None,
+            capabilities: vec!["searchSongs".to_string()],
+            config_fields: Vec::new(),
+        };
+        assert!(validate_manifest(&manifest).is_ok());
+    }
+
+    #[test]
+    fn reorders_plugins_by_id_list() {
+        tauri::async_runtime::block_on(async {
+            let database = Database::in_memory()
+                .await
+                .expect("database should open");
+            let root = std::env::temp_dir().join(format!("lyrico-plugin-reorder-{}", unique_suffix()));
+            for id in ["com.a.source", "com.b.source", "com.c.source"] {
+                database
+                    .upsert_plugin_record(
+                        id,
+                        &format!(
+                            r#"{{"id":"{id}","name":"{id}","versionCode":1,"versionName":"1.0.0","apiVersion":3,"capabilities":["searchSongs"]}}"#
+                        ),
+                        "{}",
+                    )
+                    .await
+                    .expect("plugin should be stored");
+            }
+            let plugins = reorder_plugins(
+                &database,
+                &root,
+                &[
+                    "com.c.source".to_string(),
+                    "com.a.source".to_string(),
+                    "com.b.source".to_string(),
+                ],
+            )
+            .await
+            .expect("reorder should succeed");
+            let ids: Vec<_> = plugins
+                .iter()
+                .map(|plugin| plugin.manifest.id.clone())
+                .collect();
+            assert_eq!(ids, ["com.c.source", "com.a.source", "com.b.source"]);
+            assert!(reorder_plugins(
+                &database,
+                &root,
+                &["com.a.source".to_string(), "com.a.source".to_string()],
+            )
+            .await
+            .is_err());
+        });
     }
 }

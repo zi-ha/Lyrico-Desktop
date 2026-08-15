@@ -6,6 +6,7 @@ import type { AudioTrack, LibraryFolder } from "../app/types";
 import {
   loadLibraryFolders,
   loadLibraryTracks,
+  refreshAudioTrack,
   removeLibraryFolder,
   scanFolder,
   upsertLibraryFolder,
@@ -56,6 +57,14 @@ export function useLibrary(
     setTracks((current) => current.map((track) => (samePath(track.path, nextTrack.path) ? nextTrack : track)));
     updateCachedCover(nextTrack.path, nextTrack.coverDataUrl);
   }, []);
+
+  const refreshTrack = useCallback(async (path: string) => {
+    try {
+      replaceTrack(await refreshAudioTrack(path));
+    } catch (error) {
+      message.error(String(error));
+    }
+  }, [message, replaceTrack]);
 
   const scanAndMergeFolder = useCallback(async (path: string) => {
     setLoading(true);
@@ -120,6 +129,7 @@ export function useLibrary(
     loading,
     reloadTracks,
     replaceTrack,
+    refreshTrack,
     scanAndMergeFolder,
     addFolders,
     removeFolderTracks,

@@ -56,7 +56,7 @@ impl Database {
     }
 
     #[cfg(test)]
-    async fn in_memory() -> Result<Self, String> {
+    pub(crate) async fn in_memory() -> Result<Self, String> {
         let connection = Connection::open_in_memory().map_err(|error| error.to_string())?;
         configure_connection(&connection)?;
         migrate_schema(&connection)?;
@@ -185,6 +185,25 @@ impl Database {
         self.load_plugin_record(plugin_id)
             .await?
             .ok_or_else(|| "Installed plugin record was not found".to_string())
+    }
+
+    pub(crate) async fn set_plugin_order(
+        &self,
+        plugin_ids: &[String],
+    ) -> Result<(), String> {
+        let mut connection = self.lock()?;
+        let transaction = connection
+            .transaction()
+            .map_err(|error| error.to_string())?;
+        for (index, plugin_id) in plugin_ids.iter().enumerate() {
+            transaction
+                .execute(
+                    "UPDATE source_plugins SET sort_order = ?1, updated_at = ?2 WHERE id = ?3",
+                    params![index as i32, now().to_string(), plugin_id],
+                )
+                .map_err(|error| error.to_string())?;
+        }
+        transaction.commit().map_err(|error| error.to_string())
     }
 
     pub(crate) async fn set_plugin_enabled(
@@ -1388,6 +1407,44 @@ mod tests {
                 .update_renamed_track_summary(old_path, &renamed_track)
                 .await
                 .is_err());
+        });
+    }
+
+    #[test]
+    fn plugin_order_follows_reorder_and_loads_sequentially() {
+        tauri::async_runtime::block_on(async {
+            let database = Database::in_memory().await.expect("database should open");
+            for id in ["com.a.source", "com.b.source", "com.c.source"] {
+                database
+                    .upsert_plugin_record(id, r#"{"id":"com.test"}"#, "{}")
+                    .await
+                    .expect("plugin should be stored");
+            }
+            let ids = |records: &[PluginRecord]| -> Vec<String> {
+                records.iter().map(|record| record.id.clone()).collect()
+            };
+            let initial = database
+                .load_plugin_records()
+                .await
+                .expect("records should load");
+            assert_eq!(ids(&initial), ["com.a.source", "com.b.source", "com.c.source"]);
+
+            database
+                .set_plugin_order(&[
+                    "com.c.source".to_string(),
+                    "com.a.source".to_string(),
+                    "com.b.source".to_string(),
+                ])
+                .await
+                .expect("order should be saved");
+            let reordered = database
+                .load_plugin_records()
+                .await
+                .expect("records should load");
+            assert_eq!(
+                ids(&reordered),
+                ["com.c.source", "com.a.source", "com.b.source"]
+            );
         });
     }
 

@@ -1,4 +1,4 @@
-import { ApiOutlined, AppstoreAddOutlined, DeleteOutlined, SaveOutlined } from "@ant-design/icons";
+import { ApiOutlined, AppstoreAddOutlined, ArrowDownOutlined, ArrowUpOutlined, DeleteOutlined, SaveOutlined } from "@ant-design/icons";
 import {
   Avatar,
   Button,
@@ -31,11 +31,12 @@ type PluginsPageProps = {
   plugins: SourcePlugin[];
   onInstall: () => Promise<void>;
   onChangeEnabled: (pluginId: string, enabled: boolean) => Promise<void>;
+  onReorder: (pluginId: string, offset: -1 | 1) => Promise<void>;
   onSaveConfig: (pluginId: string, config: Record<string, string>) => Promise<void>;
   onUninstall: (pluginId: string) => Promise<void>;
 };
 
-export const PluginsPage = memo(function PluginsPage({ plugins, onInstall, onChangeEnabled, onSaveConfig, onUninstall }: PluginsPageProps) {
+export const PluginsPage = memo(function PluginsPage({ plugins, onInstall, onChangeEnabled, onReorder, onSaveConfig, onUninstall }: PluginsPageProps) {
   const { t } = useTranslation();
   const [selectedPluginId, setSelectedPluginId] = useState<string>();
   const [config, setConfig] = useState<Record<string, string>>({});
@@ -102,25 +103,52 @@ export const PluginsPage = memo(function PluginsPage({ plugins, onInstall, onCha
         <Col xs={24} lg={8} xl={7}>
           <Card title={t("sources.installed")} styles={{ body: { padding: 8 } }}>
             {plugins.length ? (
-              <Menu
-                mode="inline"
-                className="source-menu"
-                selectedKeys={selectedPlugin ? [selectedPlugin.id] : []}
-                onSelect={({ key }) => setSelectedPluginId(key)}
-                items={plugins.map((plugin) => ({
-                  key: plugin.id,
-                  label: (
-                    <Flex align="center" gap={12} className="source-plugin-menu-row">
-                      <PluginIcon plugin={plugin} />
-                      <Flex vertical className="source-plugin-menu-copy">
-                        <Text strong ellipsis>{plugin.name}</Text>
-                        <Text type="secondary" ellipsis>{plugin.capabilities.map(capabilityLabel).join(" · ") || t("sources.noCapabilities")}</Text>
+              <>
+                <Text type="secondary" className="source-order-hint">{t("sources.orderHint")}</Text>
+                <Menu
+                  mode="inline"
+                  className="source-menu"
+                  selectedKeys={selectedPlugin ? [selectedPlugin.id] : []}
+                  onSelect={({ key }) => setSelectedPluginId(key)}
+                  items={plugins.map((plugin, index) => ({
+                    key: plugin.id,
+                    label: (
+                      <Flex align="center" gap={12} className="source-plugin-menu-row">
+                        <PluginIcon plugin={plugin} />
+                        <Flex vertical className="source-plugin-menu-copy">
+                          <Text strong ellipsis>{plugin.name}</Text>
+                          <Text type="secondary" ellipsis>{plugin.capabilities.map(capabilityLabel).join(" · ") || t("sources.noCapabilities")}</Text>
+                        </Flex>
+                        <Tag className="source-plugin-state" color={plugin.enabled ? "success" : "default"}>{plugin.enabled ? t("common.enabled") : t("common.disabled")}</Tag>
+                        <Space size={0} className="source-plugin-order">
+                          <Button
+                            type="text"
+                            size="small"
+                            icon={<ArrowUpOutlined />}
+                            disabled={index === 0}
+                            loading={busyAction === `up:${plugin.id}`}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              void runAction(`up:${plugin.id}`, () => onReorder(plugin.id, -1));
+                            }}
+                          />
+                          <Button
+                            type="text"
+                            size="small"
+                            icon={<ArrowDownOutlined />}
+                            disabled={index === plugins.length - 1}
+                            loading={busyAction === `down:${plugin.id}`}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              void runAction(`down:${plugin.id}`, () => onReorder(plugin.id, 1));
+                            }}
+                          />
+                        </Space>
                       </Flex>
-                      <Tag className="source-plugin-state" color={plugin.enabled ? "success" : "default"}>{plugin.enabled ? t("common.enabled") : t("common.disabled")}</Tag>
-                    </Flex>
-                  ),
-                }))}
-              />
+                    ),
+                  }))}
+                />
+              </>
             ) : (
               <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("sources.none")} />
             )}

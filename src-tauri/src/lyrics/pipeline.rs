@@ -54,9 +54,38 @@ pub(crate) fn process_plugin_result(
     target_format: LyricFormat,
     options: &LyricsOptions,
 ) -> Result<LyricsPipelineResult, String> {
-    let Some(object) = result.as_object() else {
-        return Ok(empty_result(target_format));
-    };
+    let mut first_error: Option<String> = None;
+    for candidate in plugin_candidates(result) {
+        let Some(object) = candidate.as_object() else {
+            continue;
+        };
+        match process_plugin_object(object, target_format, options) {
+            Ok(rendered) if !rendered.text.is_empty() => return Ok(rendered),
+            Ok(_) => {}
+            Err(error) if first_error.is_none() => first_error = Some(error),
+            Err(_) => {}
+        }
+    }
+    match first_error {
+        Some(error) => Err(error),
+        None => Ok(empty_result(target_format)),
+    }
+}
+
+/// 插件的 `getLyrics` 约定返回歌词候选数组（按匹配度排序），
+/// 逐个渲染，取第一个产生内容的候选；单对象结果原样处理。
+fn plugin_candidates(result: &Value) -> Vec<&Value> {
+    match result {
+        Value::Array(items) => items.iter().collect(),
+        _ => vec![result],
+    }
+}
+
+fn process_plugin_object(
+    object: &Map<String, Value>,
+    target_format: LyricFormat,
+    options: &LyricsOptions,
+) -> Result<LyricsPipelineResult, String> {
     let target_raw = object.get(raw_key(target_format)).and_then(Value::as_str);
     if target_raw.is_some_and(|raw| !raw.trim().is_empty())
         && options.show_translation
@@ -371,6 +400,7 @@ fn collect_warnings(
 mod tests {
     use super::*;
     use serde::Deserialize;
+    use serde_json::json;
 
     #[derive(Deserialize)]
     #[serde(rename_all = "camelCase")]
@@ -481,5 +511,62 @@ mod tests {
             extract_plain_text("[00:01.000]hello\n[00:02.000]world"),
             "hello\nworld"
         );
+    }
+
+    #[test]
+    fn plugin_candidate_array_renders_first_usable_lyrics() {
+        let candidates = json!([
+            { "type": "structured", "original": [[1000, 2000, [[1000, 1500, "这"], [1500, 2000, "里"]]]] },
+            { "type": "structured", "original": [[1000, 2000, "fallback"]] }
+        ]);
+        let result = process_plugin_result(
+            &candidates,
+            LyricFormat::PlainLrc,
+            &LyricsOptions::default(),
+        )
+        .expect("first candidate should render");
+        assert_eq!(result.text, "[00:01.000]这里");
+    }
+
+    #[test]
+    fn plugin_candidate_array_skips_empty_then_uses_fallback() {
+        let candidates = json!([
+            null,
+            { "type": "structured", "original": [] },
+            { "type": "structured", "original": [[1000, 2000, "fallback"]] }
+        ]);
+        let result = process_plugin_result(
+            &candidates,
+            LyricFormat::PlainLrc,
+            &LyricsOptions::default(),
+        )
+        .expect("fallback candidate should render");
+        assert_eq!(result.text, "[00:01.000]fallback");
+    }
+
+    #[test]
+    fn plugin_candidate_array_propagates_error_when_all_fail() {
+        let candidates = json!([
+            { "type": "structured", "original": [[1000, "missing end and text"]] }
+        ]);
+        let error = process_plugin_result(
+            &candidates,
+            LyricFormat::PlainLrc,
+            &LyricsOptions::default(),
+        )
+        .expect_err("malformed candidate should error");
+        assert!(error.contains("Structured lyric line"));
+    }
+
+    #[test]
+    fn plugin_candidate_array_of_nulls_returns_empty() {
+        let candidates = json!([null, null]);
+        let result = process_plugin_result(
+            &candidates,
+            LyricFormat::PlainLrc,
+            &LyricsOptions::default(),
+        )
+        .expect("empty array should not error");
+        assert!(result.text.is_empty());
     }
 }

@@ -36,7 +36,14 @@ const RAW_KEYS: Record<LyricFormat, string> = {
 export const LYRIC_FORMATS: LyricFormat[] = ["plainLrc", "verbatimLrc", "enhancedLrc", "ttml"];
 
 export function preferredPluginLyricFormat(result: unknown): LyricFormat | undefined {
-  if (!result || typeof result !== "object" || Array.isArray(result)) return undefined;
+  if (Array.isArray(result)) {
+    for (const candidate of result) {
+      const format = preferredPluginLyricFormat(candidate);
+      if (format) return format;
+    }
+    return undefined;
+  }
+  if (!result || typeof result !== "object") return undefined;
   const value = result as Record<string, unknown>;
   if (Array.isArray(value.original)) return "verbatimLrc";
   return LYRIC_FORMATS.find((format) => typeof value[RAW_KEYS[format]] === "string" && Boolean(value[RAW_KEYS[format]]));

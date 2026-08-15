@@ -6,6 +6,7 @@ import type { SourcePlugin } from "../app/types";
 import {
   installSourcePluginArchive,
   loadSourcePlugins,
+  reorderSourcePlugins,
   saveSourcePluginSettings,
   setSourcePluginEnabled,
   uninstallSourcePlugin,
@@ -56,6 +57,20 @@ export function usePlugins(message: MessageInstance, t: TFunction) {
     }
   }, [message]);
 
+  const movePlugin = useCallback(async (pluginId: string, offset: -1 | 1) => {
+    const index = plugins.findIndex((plugin) => plugin.id === pluginId);
+    const target = index + offset;
+    if (index < 0 || target < 0 || target >= plugins.length) return;
+    const reordered = [...plugins];
+    const [moved] = reordered.splice(index, 1);
+    reordered.splice(target, 0, moved);
+    try {
+      setPlugins(await reorderSourcePlugins(reordered.map((plugin) => plugin.id)));
+    } catch (error) {
+      message.error(String(error));
+    }
+  }, [plugins, message]);
+
   const savePluginConfig = useCallback(async (pluginId: string, config: Record<string, string>) => {
     try {
       setPlugins(await saveSourcePluginSettings(pluginId, config));
@@ -80,6 +95,7 @@ export function usePlugins(message: MessageInstance, t: TFunction) {
     plugins,
     installPlugin,
     changePluginEnabled,
+    movePlugin,
     savePluginConfig,
     uninstallPlugin,
   };

@@ -1,4 +1,4 @@
-use super::manifest::SourcePlugin;
+use super::manifest::{SourcePlugin, HOST_API_VERSION, PLUGIN_API_VERSION};
 use aes::Aes128;
 use base64::engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD};
 use base64::Engine;
@@ -200,7 +200,7 @@ impl HostApi {
                 env!("CARGO_PKG_VERSION")
             ))),
             "runtime.info" => Ok(
-                json!({"pluginApiVersion":3,"hostApiVersion":3,"engine":"quickjs","engineVersion":null,"supportedHostApis":SUPPORTED_HOST_APIS}),
+                json!({"pluginApiVersion":PLUGIN_API_VERSION,"hostApiVersion":HOST_API_VERSION,"engine":"quickjs","engineVersion":null,"supportedHostApis":SUPPORTED_HOST_APIS}),
             ),
             "log.debug" | "log.warn" | "log.error" => {
                 eprintln!(

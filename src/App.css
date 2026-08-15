@@ -35,6 +35,19 @@ textarea {
   font: inherit;
 }
 
+/* 全局禁止选中软件文本，仅文本框/输入框可选中 */
+* {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+input,
+textarea,
+[contenteditable="true"] {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
 .app-shell {
   height: 100%;
   overflow: hidden;
@@ -671,6 +684,17 @@ textarea {
 }
 
 .source-plugin-state {
+  flex: none;
+  margin-inline-end: 0;
+}
+
+.source-order-hint {
+  display: block;
+  padding: 0 10px 8px;
+  font-size: 12px;
+}
+
+.source-plugin-order {
   flex: none;
   margin-inline-end: 0;
 }

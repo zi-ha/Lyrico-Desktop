@@ -81,6 +81,16 @@ pub(crate) async fn set_source_plugin_enabled(
 }
 
 #[tauri::command]
+pub(crate) async fn reorder_source_plugins(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    plugin_ids: Vec<String>,
+) -> Result<Vec<SourcePlugin>, String> {
+    let paths = resolve_data_paths(&app)?;
+    plugin_installer::reorder_plugins(&state.database, &paths.plugins, &plugin_ids).await
+}
+
+#[tauri::command]
 pub(crate) async fn save_source_plugin_settings(
     app: AppHandle,
     state: State<'_, AppState>,
@@ -504,6 +514,23 @@ pub(crate) async fn read_audio_file(app: AppHandle, path: String) -> Result<Audi
     })
     .await
     .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+pub(crate) async fn refresh_audio_track(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    path: String,
+) -> Result<AudioTrack, String> {
+    let artist_separator = app_config::load_artist_split_config(&app)?.artist_separator;
+    let track = tauri::async_runtime::spawn_blocking(move || {
+        read_track(Path::new(&path), &artist_separator, ArtworkMode::Full)
+            .map_err(|error| error.to_string())
+    })
+    .await
+    .map_err(|error| error.to_string())??;
+    state.database.update_track_summary(&track).await?;
+    Ok(track)
 }
 
 #[tauri::command]

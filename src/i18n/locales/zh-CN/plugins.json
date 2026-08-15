@@ -1,9 +1,10 @@
 {
   "sources": {
     "title": "插件源",
-    "description": "安装并配置 API v3 插件，用于在线搜索标签、歌词和封面。",
+    "description": "安装并配置插件，用于在线搜索标签、歌词和封面。",
     "install": "安装插件 ZIP",
     "installed": "已安装插件",
+    "orderHint": "使用箭头调整顺序，批量匹配和在线匹配将按此顺序展示插件。",
     "none": "尚未安装插件",
     "configuration": "配置",
     "noConfiguration": "此插件没有可配置项",

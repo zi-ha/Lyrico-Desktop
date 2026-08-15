@@ -9,6 +9,7 @@ export const LibraryPage = memo(function LibraryPage({
   onSelectTrack,
   onChangeSelectedPaths,
   onOpenDetails,
+  onRefreshTrack,
 }: {
   tracks: AudioTrack[];
   selectedPath?: string;
@@ -16,6 +17,7 @@ export const LibraryPage = memo(function LibraryPage({
   onSelectTrack: (path?: string) => void;
   onChangeSelectedPaths: (paths: string[]) => void;
   onOpenDetails: (path?: string) => void;
+  onRefreshTrack: (path: string) => Promise<void>;
 }) {
   return (
     <SongsPage
@@ -25,6 +27,7 @@ export const LibraryPage = memo(function LibraryPage({
       onSelectTrack={onSelectTrack}
       onChangeSelectedPaths={onChangeSelectedPaths}
       onOpenDetails={onOpenDetails}
+      onRefreshTrack={onRefreshTrack}
     />
   );
 });

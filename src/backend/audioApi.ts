@@ -9,6 +9,10 @@ export async function readAudioFile(path: string) {
   return invoke<AudioTrack>("read_audio_file", { path });
 }
 
+export async function refreshAudioTrack(path: string) {
+  return invoke<AudioTrack>("refresh_audio_track", { path });
+}
+
 export async function readImageFile(path: string) {
   return invoke<string>("read_image_file", { path });
 }
@@ -133,6 +137,10 @@ export async function installSourcePluginArchive(archivePath: string, allowDowng
 
 export async function setSourcePluginEnabled(pluginId: string, enabled: boolean) {
   return invoke<SourcePlugin[]>("set_source_plugin_enabled", { pluginId, enabled });
+}
+
+export async function reorderSourcePlugins(pluginIds: string[]) {
+  return invoke<SourcePlugin[]>("reorder_source_plugins", { pluginIds });
 }
 
 export async function saveSourcePluginSettings(pluginId: string, config: Record<string, string>) {
