@@ -10,7 +10,7 @@ use std::collections::HashSet;
 use std::path::Path;
 
 pub(crate) const AUDIO_EXTENSIONS: &[&str] = &[
-    "mp3", "flac", "m4a", "mp4", "aac", "ogg", "opus", "wav", "aiff", "aif",
+    "mp3", "flac", "m4a", "aac", "ogg", "opus", "wav", "aiff", "aif",
 ];
 
 #[derive(Clone, Copy)]
