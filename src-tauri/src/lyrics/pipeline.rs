@@ -86,7 +86,7 @@ fn process_plugin_object(
     target_format: LyricFormat,
     options: &LyricsOptions,
 ) -> Result<LyricsPipelineResult, String> {
-    let target_raw = object.get(raw_key(target_format)).and_then(Value::as_str);
+    let target_raw = raw_string(object, raw_keys(target_format));
     if target_raw.is_some_and(|raw| !raw.trim().is_empty())
         && options.show_translation
         && options.show_romanization
@@ -137,6 +137,19 @@ fn parse_best_raw_document(
     target_format: LyricFormat,
     options: &LyricsOptions,
 ) -> Option<LyricsDocument> {
+    // 多人增强歌词（MPE）带逐字时间与演唱者标记，可无损转为增强 LRC
+    for key in MULTI_PERSON_ENHANCED_RAW_KEYS {
+        let Some(raw) = object.get(*key).and_then(Value::as_str) else {
+            continue;
+        };
+        if raw.trim().is_empty() {
+            continue;
+        }
+        let parsed = parse_document(raw, LyricFormat::EnhancedLrc);
+        if parsed.tracks.iter().any(|track| !track.lines.is_empty()) {
+            return Some(parsed);
+        }
+    }
     let mut order = Vec::new();
     push_unique(&mut order, target_format);
     if options.show_translation
@@ -150,7 +163,7 @@ fn parse_best_raw_document(
     push_unique(&mut order, LyricFormat::PlainLrc);
     push_unique(&mut order, LyricFormat::Ttml);
     for source_format in order {
-        let Some(raw) = object.get(raw_key(source_format)).and_then(Value::as_str) else {
+        let Some(raw) = raw_string(object, raw_keys(source_format)) else {
             continue;
         };
         if raw.trim().is_empty() {
@@ -293,6 +306,25 @@ fn raw_key(format: LyricFormat) -> &'static str {
     }
 }
 
+const MULTI_PERSON_ENHANCED_RAW_KEYS: &[&str] = &[
+    "rawMultiPersonEnhancedLrc",
+    "raw_multi_person_enhanced_lrc",
+];
+
+fn raw_keys(format: LyricFormat) -> &'static [&'static str] {
+    match format {
+        LyricFormat::PlainLrc => &["rawPlainLrc", "raw_plain_lrc"],
+        LyricFormat::VerbatimLrc => &["rawVerbatimLrc", "raw_verbatim_lrc"],
+        LyricFormat::EnhancedLrc => &["rawEnhancedLrc", "raw_enhanced_lrc"],
+        LyricFormat::Ttml => &["rawTtml", "raw_ttml"],
+    }
+}
+
+fn raw_string<'a>(object: &'a Map<String, Value>, keys: &[&str]) -> Option<&'a str> {
+    keys.iter()
+        .find_map(|key| object.get(*key).and_then(Value::as_str))
+}
+
 pub(crate) fn detect_format(raw: &str) -> LyricFormat {
     static TTML: OnceLock<Regex> = OnceLock::new();
     static ENHANCED: OnceLock<Regex> = OnceLock::new();
@@ -308,7 +340,7 @@ pub(crate) fn detect_format(raw: &str) -> LyricFormat {
     }
     if ENHANCED
         .get_or_init(|| {
-            Regex::new(r"<\d{1,3}:\d{2}(?:[.:]\d{1,3})?>")
+            Regex::new(r"<\d{1,3}:\d{2}(?:[.:]\d{1,3})?(?:\|[^<>]*)?>")
                 .expect("valid enhanced LRC detection regex")
         })
         .is_match(raw)
@@ -508,6 +540,10 @@ mod tests {
             LyricFormat::EnhancedLrc
         );
         assert_eq!(
+            detect_format("[00:11.00]<00:11.00|张三>天<00:12.00>"),
+            LyricFormat::EnhancedLrc
+        );
+        assert_eq!(
             extract_plain_text("[00:01.000]hello\n[00:02.000]world"),
             "hello\nworld"
         );
@@ -568,5 +604,30 @@ mod tests {
         )
         .expect("empty array should not error");
         assert!(result.text.is_empty());
+    }
+
+    #[test]
+    fn renders_multi_person_enhanced_lrc_as_word_timed_lyrics() {
+        let candidate = json!({
+            "type": "rawMultiPersonEnhancedLrc",
+            "tags": { "ti": "晴天", "ar": "周杰伦" },
+            "rawMultiPersonEnhancedLrc":
+                "[00:11.00]<00:11.00|张三>天<00:12.00|李四>空<00:13.00>"
+        });
+        let result = process_plugin_result(&candidate, LyricFormat::EnhancedLrc, &LyricsOptions::default())
+            .expect("MPE should render as enhanced LRC");
+        assert_eq!(result.text, "[00:11.000]<00:11.000>天<00:12.000>空<00:13.000>");
+    }
+
+    #[test]
+    fn renders_snake_case_raw_keys() {
+        let candidate = json!({
+            "type": "rawPlainLrc",
+            "tags": { "ti": "晴天" },
+            "raw_plain_lrc": "[00:01.000]hello\n[00:02.000]world"
+        });
+        let result = process_plugin_result(&candidate, LyricFormat::PlainLrc, &LyricsOptions::default())
+            .expect("snake_case raw key should render");
+        assert_eq!(result.text, "[00:01.000]hello\n[00:02.000]world");
     }
 }

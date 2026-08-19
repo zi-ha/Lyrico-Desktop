@@ -647,6 +647,7 @@ fn duration_similarity(local: f64, remote: f64) -> Option<f64> {
 fn normalized_fields(result: &Value) -> HashMap<String, String> {
     let mut fields: HashMap<String, String> = result
         .get("fields")
+        .or_else(|| result.get("metadata"))
         .and_then(Value::as_object)
         .map(|values| {
             values
@@ -659,9 +660,9 @@ fn normalized_fields(result: &Value) -> HashMap<String, String> {
         ("title", &["title", "name", "songName"][..]),
         ("artist", &["artist", "artists", "singer"][..]),
         ("album", &["album", "albumName"][..]),
-        ("date", &["date", "releaseDate"][..]),
-        ("track_number", &["trackNumber"][..]),
-        ("cover_url", &["picUrl", "coverUrl", "artworkUrl"][..]),
+        ("date", &["date", "releaseDate", "year", "release_date"][..]),
+        ("track_number", &["trackNumber", "trackerNumber", "track_number"][..]),
+        ("cover_url", &["picUrl", "coverUrl", "cover_url", "artworkUrl"][..]),
     ] {
         let value = string_value(result, aliases);
         if !value.trim().is_empty() {
@@ -983,6 +984,61 @@ mod tests {
     }
 
     #[test]
+    fn rejects_broken_qq_record_with_replacement_char_title() {
+        // 实测腾讯搜索接口对"山岗 洛天依"返回的空壳记录：
+        // 标题为 U+FFFD 替换符、歌手损坏、专辑/日期/封面全空、音轨号为垃圾值
+        let broken = json!({
+            "id": "409068462",
+            "title": "\u{fffd}\u{fffd}\u{fffd}\u{fffd}",
+            "artist": "\u{fffd}\u{fffd}",
+            "album": "",
+            "duration": 254000,
+            "date": "",
+            "trackNumber": "",
+            "picUrl": "",
+            "fields": {
+                "title": "\u{fffd}\u{fffd}\u{fffd}\u{fffd}",
+                "artist": "\u{fffd}\u{fffd}",
+                "album": "",
+                "date": "",
+                "track_number": "-31073",
+                "cover_url": ""
+            }
+        });
+        let score = calculate_match_score(&track(), &broken, false, 0);
+        assert!(
+            score.final_score < 0.76 || score.text_score < 0.72,
+            "broken record should be rejected, got final={:.3} text={:.3}",
+            score.final_score,
+            score.text_score
+        );
+        let fields = normalized_fields(&broken);
+        assert!(!fields.contains_key("album"));
+        assert!(!fields.contains_key("date"));
+        assert!(!fields.contains_key("cover_url"));
+        // 损坏的标题/歌手因分数被拒不会走到写入；即使误入，空值字段也不会被写入
+        assert!(numeric_field(
+            "track_number",
+            None,
+            &fields,
+            &MatchConfig {
+                target_modes: HashMap::from([("track_number".to_string(), "overwrite".to_string())]),
+                enabled_source_order_ids: Vec::new(),
+                prefer_file_name: false,
+                separator: "/".to_string(),
+                lyric_format: default_lyric_format(),
+                show_translation: true,
+                show_romanization: true,
+                only_translation_if_available: false,
+                remove_empty_lyric_lines: true,
+                lyrics_conversion_mode: default_conversion_mode(),
+            },
+            &mut Vec::new(),
+        )
+        .is_none());
+    }
+
+    #[test]
     fn supplement_preserves_existing_fields_and_overwrite_replaces_enabled_fields() {
         let current = track();
         let fields = HashMap::from([
@@ -1011,5 +1067,26 @@ mod tests {
         assert_eq!(update.album, "叶惠美");
         assert_eq!(update.track_number, Some(3));
         assert_eq!(changed, vec!["album", "track_number"]);
+    }
+
+    #[test]
+    fn normalized_fields_reads_spec_aliases_and_metadata_object() {
+        let fields = normalized_fields(&json!({
+            "title": "晴天",
+            "artist": "周杰伦",
+            "year": "2003",
+            "trackerNumber": "3",
+            "cover_url": "https://example.com/cover.jpg",
+            "metadata": { "album": "叶惠美", "language": "zh" }
+        }));
+        assert_eq!(fields.get("title").map(String::as_str), Some("晴天"));
+        assert_eq!(fields.get("date").map(String::as_str), Some("2003"));
+        assert_eq!(fields.get("track_number").map(String::as_str), Some("3"));
+        assert_eq!(
+            fields.get("cover_url").map(String::as_str),
+            Some("https://example.com/cover.jpg")
+        );
+        assert_eq!(fields.get("album").map(String::as_str), Some("叶惠美"));
+        assert_eq!(fields.get("language").map(String::as_str), Some("zh"));
     }
 }

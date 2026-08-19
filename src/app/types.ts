@@ -189,11 +189,16 @@ export type PluginSongResult = {
   durationMs?: number;
   date?: string;
   releaseDate?: string;
+  year?: string;
   trackNumber?: string | number;
+  trackerNumber?: string | number;
+  track_number?: string;
   picUrl?: string;
   coverUrl?: string;
+  cover_url?: string;
   artworkUrl?: string;
   fields?: Record<string, unknown>;
+  metadata?: Record<string, unknown>;
   internal?: Record<string, unknown>;
 };
 

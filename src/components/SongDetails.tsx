@@ -533,7 +533,7 @@ function normalizeSearchResults(response: unknown): PluginSongResult[] {
 }
 
 function resultToTagPatch(result: PluginSongResult) {
-  const fields = result.fields ?? {};
+  const fields = result.fields ?? result.metadata ?? {};
   const value = (key: string, fallback?: unknown) => fields[key] ?? fallback;
   const artists = value("artist", result.artist ?? result.artists ?? result.singer);
   const genres = value("genre");
@@ -543,7 +543,7 @@ function resultToTagPatch(result: PluginSongResult) {
   assignPresent(patch, "album", value("album", result.album ?? result.albumName), stringValue);
   assignPresent(patch, "albumArtist", value("album_artist"), stringValue);
   assignPresent(patch, "genre", genres, (item) => Array.isArray(item) ? item.map(String) : stringValue(item).split(/[;,/]/).map((part) => part.trim()).filter(Boolean));
-  assignPresent(patch, "year", value("date", result.date ?? result.releaseDate), stringValue);
+  assignPresent(patch, "year", value("date", result.date ?? result.releaseDate ?? result.year), stringValue);
   assignPresent(patch, "trackNumber", value("track_number", result.trackNumber), numberValue);
   assignPresent(patch, "discNumber", value("disc_number"), numberValue);
   assignPresent(patch, "composer", value("composer"), stringValue);
@@ -562,8 +562,8 @@ function resultToTagPatch(result: PluginSongResult) {
 }
 
 function resultCoverUrl(result: PluginSongResult) {
-  const value = result.fields?.cover_url ?? result.picUrl ?? result.coverUrl ?? result.artworkUrl;
-  return typeof value === "string" ? value : undefined;
+  const value = result.fields?.cover_url ?? result.picUrl ?? result.coverUrl ?? result.cover_url ?? result.artworkUrl;
+  return typeof value === "string" && value.trim() ? value : undefined;
 }
 
 function resultDuration(result: PluginSongResult) {

@@ -88,9 +88,15 @@ fn parse_timed_line(line: &str, open: char, close: char) -> Option<LyricsLine> {
 
     let escaped_open = regex::escape(&open.to_string());
     let escaped_close = regex::escape(&close.to_string());
+    // 增强 LRC 的 <mm:ss> 单词时间戳；MPE 多人增强歌词为 <mm:ss|演唱者>
+    let speaker_suffix = if open == '<' {
+        r"(?:\|[^<>]*)?".to_string()
+    } else {
+        String::new()
+    };
     let pattern = Regex::new(&format!(
-        r"{}(\d{{1,3}}:\d{{2}}(?:[.:]\d{{1,3}})?){}",
-        escaped_open, escaped_close
+        r"{}(\d{{1,3}}:\d{{2}}(?:[.:]\d{{1,3}})?){}{}",
+        escaped_open, speaker_suffix, escaped_close
     ))
     .expect("valid timed LRC regex");
     let stamps: Vec<_> = pattern
@@ -361,4 +367,26 @@ pub(crate) fn lrc_time(milliseconds: i64) -> String {
         (safe % 60_000) / 1_000,
         safe % 1_000
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_mpe_speaker_stamps_as_word_timings() {
+        let document = parse(
+            "[00:11.00]<00:11.00|张三>天<00:12.00|李四>空<00:13.00>",
+            LyricFormat::EnhancedLrc,
+        );
+        let line = &document.tracks[0].lines[0];
+        assert_eq!(line.start_ms, Some(11_000));
+        assert_eq!(line.end_ms, Some(13_000));
+        assert_eq!(line.text, "天空");
+        assert_eq!(line.words.len(), 2);
+        assert_eq!(line.words[0].start_ms, Some(11_000));
+        assert_eq!(line.words[0].text, "天");
+        assert_eq!(line.words[1].start_ms, Some(12_000));
+        assert_eq!(line.words[1].text, "空");
+    }
 }

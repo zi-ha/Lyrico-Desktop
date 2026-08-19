@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-pub(crate) const PLUGIN_API_VERSION: u32 = 3;
+pub(crate) const PLUGIN_API_VERSION: u32 = 4;
 pub(crate) const HOST_API_VERSION: u32 = 3;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
