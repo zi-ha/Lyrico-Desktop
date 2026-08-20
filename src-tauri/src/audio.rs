@@ -196,7 +196,11 @@ pub(crate) fn save_tags(update: TagUpdate, artist_separator: &str) -> Result<Aud
         |tag| tag.remove_comment(),
     );
     set_text_item(tag, ItemKey::AlbumArtist, update.album_artist);
-    set_text_item(tag, ItemKey::Lyrics, update.lyrics);
+    // ItemKey::Lyrics is not supported by ID3v2 (MP3); use the standardized
+    // unsynchronized-lyrics key and clear any legacy Lyrics key so stale
+    // values cannot shadow the newly written lyrics on read-back.
+    tag.remove_key(ItemKey::Lyrics);
+    set_text_item(tag, ItemKey::UnsyncLyrics, update.lyrics);
     set_text_item(tag, ItemKey::RecordingDate, update.year.clone());
     set_text_item(tag, ItemKey::Year, update.year);
     set_text_item(
@@ -271,7 +275,8 @@ pub(crate) fn write_lyrics_tag(
     let tag = tagged_file
         .primary_tag_mut()
         .ok_or_else(|| "This audio format does not support writable primary tags".to_string())?;
-    set_text_item(tag, ItemKey::Lyrics, lyrics);
+    tag.remove_key(ItemKey::Lyrics);
+    set_text_item(tag, ItemKey::UnsyncLyrics, lyrics);
     tag.save_to_path(path, WriteOptions::new())
         .map_err(|error| error.to_string())?;
     read_track(path, artist_separator, ArtworkMode::None).map_err(|error| error.to_string())

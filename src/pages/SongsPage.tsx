@@ -1,8 +1,10 @@
+import { ReloadOutlined } from "@ant-design/icons";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
-import { Checkbox, Typography } from "antd";
+import { Button, Checkbox, Tooltip, Typography } from "antd";
 import { useTranslation } from "react-i18next";
-import type { AudioTrack } from "../app/types";
+import type { AudioTrack, LibraryFolder } from "../app/types";
 import { TrackArtwork } from "../components/TrackArtwork";
+import { isTrackUnderFolder } from "../domain/libraryPath";
 import { formatDuration } from "../utils/format";
 
 const { Text } = Typography;
@@ -14,6 +16,8 @@ export const SongsPage = memo(function SongsPage({
   onSelectTrack,
   onChangeSelectedPaths,
   onOpenDetails,
+  folders,
+  onRescanFolder,
   onRefreshTrack,
 }: {
   tracks: AudioTrack[];
@@ -22,6 +26,8 @@ export const SongsPage = memo(function SongsPage({
   onSelectTrack: (path?: string) => void;
   onChangeSelectedPaths: (paths: string[]) => void;
   onOpenDetails: (path?: string) => void;
+  folders: LibraryFolder[];
+  onRescanFolder: (path: string) => void;
   onRefreshTrack: (path: string) => Promise<void>;
 }) {
   const { t } = useTranslation();
@@ -168,13 +174,32 @@ export const SongsPage = memo(function SongsPage({
       };
     }
   }
+  const selectedFolder = selectedPath
+    ? folders.find((folder) => isTrackUnderFolder(selectedPath, folder.path))
+    : undefined;
 
   return (
     <div className="songs-page" onContextMenu={(e) => e.preventDefault()}>
       <div className="songs-header-row">
         <div className="songs-col-check" />
         <div className="songs-col-artwork" />
-        <div className="songs-col-filename">{t("table.fileName")}</div>
+        <div className="songs-col-filename songs-header-filename">
+          <span className="songs-col-filename-label">{t("table.fileName")}</span>
+          <Tooltip title={t("folders.rescan")}>
+            <Button
+              type="text"
+              size="small"
+              className="songs-header-refresh"
+              aria-label={t("folders.rescan")}
+              icon={<ReloadOutlined />}
+              disabled={!selectedFolder}
+              onClick={(event) => {
+                event.stopPropagation();
+                if (selectedFolder) onRescanFolder(selectedFolder.path);
+              }}
+            />
+          </Tooltip>
+        </div>
         <div className="songs-col-format">{t("table.format")}</div>
         <div className="songs-col-title">{t("details.titleField")}</div>
         <div className="songs-col-artist">{t("details.artist")}</div>

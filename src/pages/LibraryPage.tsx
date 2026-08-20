@@ -1,5 +1,5 @@
 import { memo } from "react";
-import type { AudioTrack } from "../app/types";
+import type { AudioTrack, LibraryFolder } from "../app/types";
 import { SongsPage } from "./SongsPage";
 
 export const LibraryPage = memo(function LibraryPage({
@@ -9,6 +9,8 @@ export const LibraryPage = memo(function LibraryPage({
   onSelectTrack,
   onChangeSelectedPaths,
   onOpenDetails,
+  folders,
+  onRescanFolder,
   onRefreshTrack,
 }: {
   tracks: AudioTrack[];
@@ -17,6 +19,8 @@ export const LibraryPage = memo(function LibraryPage({
   onSelectTrack: (path?: string) => void;
   onChangeSelectedPaths: (paths: string[]) => void;
   onOpenDetails: (path?: string) => void;
+  folders: LibraryFolder[];
+  onRescanFolder: (path: string) => void;
   onRefreshTrack: (path: string) => Promise<void>;
 }) {
   return (
@@ -27,6 +31,8 @@ export const LibraryPage = memo(function LibraryPage({
       onSelectTrack={onSelectTrack}
       onChangeSelectedPaths={onChangeSelectedPaths}
       onOpenDetails={onOpenDetails}
+      folders={folders}
+      onRescanFolder={onRescanFolder}
       onRefreshTrack={onRefreshTrack}
     />
   );

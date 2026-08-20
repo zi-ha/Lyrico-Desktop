@@ -1029,6 +1029,27 @@ textarea,
   padding-right: 8px;
 }
 
+.songs-header-filename {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.songs-col-filename-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.songs-header-refresh {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  color: #8c8c8c;
+}
+
 .songs-col-format {
   flex: 0 0 60px;
   padding-right: 8px;

@@ -119,6 +119,8 @@ function LyricoDesktop() {
             onSelectTrack={selection.selectTrack}
             onChangeSelectedPaths={selection.setSelectedPaths}
             onOpenDetails={editor.openTrackDetails}
+            folders={library.folders}
+            onRescanFolder={library.scanAndMergeFolder}
             onRefreshTrack={library.refreshTrack}
           />
         );
