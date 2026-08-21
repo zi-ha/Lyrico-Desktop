@@ -5,7 +5,7 @@ use lofty::config::WriteOptions;
 use lofty::file::{AudioFile, TaggedFileExt};
 use lofty::picture::{MimeType, Picture, PictureType};
 use lofty::tag::items::popularimeter::{Popularimeter, StarRating};
-use lofty::tag::{Accessor, ItemKey, ItemValue, Tag, TagExt, TagItem};
+use lofty::tag::{Accessor, ItemKey, ItemValue, Tag, TagExt, TagItem, TagType};
 use std::collections::HashSet;
 use std::path::Path;
 
@@ -196,11 +196,19 @@ pub(crate) fn save_tags(update: TagUpdate, artist_separator: &str) -> Result<Aud
         |tag| tag.remove_comment(),
     );
     set_text_item(tag, ItemKey::AlbumArtist, update.album_artist);
-    // ItemKey::Lyrics is not supported by ID3v2 (MP3); use the standardized
-    // unsynchronized-lyrics key and clear any legacy Lyrics key so stale
-    // values cannot shadow the newly written lyrics on read-back.
-    tag.remove_key(ItemKey::Lyrics);
-    set_text_item(tag, ItemKey::UnsyncLyrics, update.lyrics);
+    // Lyrics compatibility: Vorbis-based formats (FLAC/OGG) are read by most
+    // players via the `LYRICS` comment, while ID3v2 (MP3) requires `USLT`
+    // (UnsyncLyrics) and silently ignores `ItemKey::Lyrics`.
+    match tag_type {
+        TagType::Id3v2 => {
+            tag.remove_key(ItemKey::Lyrics);
+            set_text_item(tag, ItemKey::UnsyncLyrics, update.lyrics);
+        }
+        _ => {
+            tag.remove_key(ItemKey::UnsyncLyrics);
+            set_text_item(tag, ItemKey::Lyrics, update.lyrics);
+        }
+    }
     set_text_item(tag, ItemKey::RecordingDate, update.year.clone());
     set_text_item(tag, ItemKey::Year, update.year);
     set_text_item(
@@ -275,8 +283,16 @@ pub(crate) fn write_lyrics_tag(
     let tag = tagged_file
         .primary_tag_mut()
         .ok_or_else(|| "This audio format does not support writable primary tags".to_string())?;
-    tag.remove_key(ItemKey::Lyrics);
-    set_text_item(tag, ItemKey::UnsyncLyrics, lyrics);
+    match tag_type {
+        TagType::Id3v2 => {
+            tag.remove_key(ItemKey::Lyrics);
+            set_text_item(tag, ItemKey::UnsyncLyrics, lyrics);
+        }
+        _ => {
+            tag.remove_key(ItemKey::UnsyncLyrics);
+            set_text_item(tag, ItemKey::Lyrics, lyrics);
+        }
+    }
     tag.save_to_path(path, WriteOptions::new())
         .map_err(|error| error.to_string())?;
     read_track(path, artist_separator, ArtworkMode::None).map_err(|error| error.to_string())
